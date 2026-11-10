@@ -1,0 +1,2335 @@
+--[[ Sunset Sisi Top v36 — Slimmer Header + Centered Tabs + Softer Palette + Fixed Buff Rows ]]
+if not game:IsLoaded() then repeat task.wait() until game:IsLoaded() end
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local SG = game:GetService("StarterGui")
+local LP = Players.LocalPlayer
+local PG = LP:WaitForChild("PlayerGui")
+local UIS = game:GetService("UserInputService")
+local Debris = game:GetService("Debris")
+local Https = game:GetService("HttpService")
+local TweenS = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local WS = workspace
+
+local VERSION_TAG = "36.0"
+local newcclosure = newcclosure or function(f) return f end
+local getconnections = getconnections or (syn and syn.getconnections) or (fluxus and fluxus.getconnections)
+
+local function tryReq(n, t)
+    local m = RS:FindFirstChild(n); if not m then local ok, r = pcall(RS.WaitForChild, RS, n, t or 5); if ok then m = r end end
+    if not m then return nil end
+    local ok, res = pcall(require, m); return ok and res or nil
+end
+local Info = tryReq("Info", 10) or {Gifts={}, Cases={}, Backdrops={}, Patterns={}}
+local Handler = tryReq("Handler")
+local HalloweenCfg = tryReq("HalloweenConfigs") or {Spin={Prizes={}, FreeEvery=10800}, Cauldron={Recipes={}}, Products={}}
+local NFTPassCfg = tryReq("NFTPassConfigs") or {Rewards={Free={},Plus={}}, LvlXP=function() return 0 end, Season=0}
+local ExclusiveCfg = tryReq("ExclusiveConfig") or {Wheel=function() return {} end}
+local CraftCfg = tryReq("CraftConfigs") or {Rarities={}, Drops=function() return {} end}
+local ShopItemsCfg = tryReq("ShopItems") or {Items={}}
+local RebirthCfg = tryReq("RebirthConfig") or {VoucherProducts={}}
+local Ev = RS:WaitForChild("Events", 15)
+
+if Info and Info.Gifts then
+    local mt = getmetatable(Info.Gifts) or {}
+    local oi = mt.__index
+    local fake = {Price=0, Image=0, DisplayName="", Hidden=true}
+    setmetatable(Info.Gifts, {__index=function(t,k) if k==nil then return fake end if type(oi)=="function" then return oi(t,k) end return rawget(t,k) end})
+end
+
+local FOLDER = "SunsetSisi"
+local FILES = {normal=FOLDER.."/normal_nfts.json",unique=FOLDER.."/unique_nfts.json",curr=FOLDER.."/fake_currencies.json",mail=FOLDER.."/fake_mail.json",log=FOLDER.."/log.json",promo=FOLDER.."/promo_codes.json",buff=FOLDER.."/buffs.json",best=FOLDER.."/best_drop.json",cnft=FOLDER.."/custom_nfts.json",index=FOLDER.."/fake_index.json",settings=FOLDER.."/settings.json"}
+local hasFile = (type(writefile)=="function" and type(readfile)=="function" and type(isfile)=="function" and type(isfolder)=="function" and type(makefolder)=="function")
+if hasFile then
+    pcall(function() if not isfolder(FOLDER) then makefolder(FOLDER) end end)
+    for _, f in pairs(FILES) do pcall(function() if not isfile(f) then writefile(f, "{}") end end) end
+end
+local function rJSON(p, d)
+    if not hasFile or not isfile(p) then return d end
+    local ok, raw = pcall(readfile, p); if not ok or type(raw) ~= "string" or raw == "" then return d end
+    local ok2, data = pcall(function() return Https:JSONDecode(raw) end); return ok2 and data or d
+end
+local function wJSON(p, d) if hasFile then pcall(function() writefile(p, Https:JSONEncode(d)) end) end end
+
+local _nfts, _uniques, _currencies, _mail, _logs, _promo, _buffs, _best, _customNFTs, _index, _settings = {}, {}, {}, {}, {}, {}, {}, {name=nil, old=nil}, {}, {}, {FakeAllPurchases=true}
+do
+    for k, f in pairs(FILES) do
+        local d = rJSON(f, {}); if type(d) ~= "table" then continue end
+        if k=="normal" then _nfts = d elseif k=="unique" then _uniques = d
+        elseif k=="curr" then _currencies = d elseif k=="mail" then _mail = d
+        elseif k=="log" then _logs = d elseif k=="promo" then _promo = d
+        elseif k=="buff" then _buffs = d elseif k=="best" then _best = {name=d.name, old=d.old}
+        elseif k=="cnft" then _customNFTs = d
+        elseif k=="index" then _index = d elseif k=="settings" then for kk, vv in pairs(d) do _settings[kk] = vv end end
+    end
+end
+local SAVE = {}
+for k, f in pairs(FILES) do
+    SAVE[k] = function()
+        local d = k=="normal" and _nfts or k=="unique" and _uniques or k=="curr" and _currencies or k=="mail" and _mail
+            or k=="log" and _logs or k=="promo" and _promo or k=="buff" and _buffs or k=="best" and _best
+            or k=="cnft" and _customNFTs or k=="index" and _index or k=="settings" and _settings or {}
+        wJSON(f, d)
+    end
+end
+local _lastLog = 0
+local function pushLog(msg)
+    local now = os.clock(); if now - _lastLog < 0.05 then return end; _lastLog = now
+    table.insert(_logs, {t=os.time(), m=tostring(msg)})
+    while #_logs > 200 do table.remove(_logs, 1) end
+    task.delay(0.3, SAVE.log)
+end
+for name, data in pairs(_customNFTs) do
+    if type(data) == "table" then
+        Info.Gifts[name] = {Price=tonumber(data.price) or 0, Image=tonumber(data.image) or 0, DisplayName=data.display or name, CustomUser=true, Hidden=false}
+    end
+end
+local mailSender = _settings.mailSender or ""
+
+local function num(n) return tostring(math.floor(tonumber(n) or 0)) end
+local SUFFIXES = {"", "k", "M", "B", "T", "Qd", "Qn"}
+local function fullNum(n)
+    n = math.floor(tonumber(n) or 0)
+    local i = 1
+    while n >= 1000 and i < #SUFFIXES do n = n / 1000; i = i + 1 end
+    if i == 1 then return tostring(math.floor(n)) end
+    return string.format("%.1f", n):gsub("%.0$", "") .. SUFFIXES[i]
+end
+local function parseNum(str)
+    if type(str) ~= "string" then return nil end
+    local s = str:lower():gsub("%s", ""):gsub(",", "")
+    local mult, part = 1, s
+    local _, _, suf = s:find("([kmbt])$")
+    if suf then part = s:sub(1, #s - 1); mult = ({k=1e3,m=1e6,b=1e9,t=1e12})[suf] or 1 end
+    local clean = part:gsub("[^%d%.]", ""); if clean == "" then return nil end
+    local numV = tonumber(clean); if not numV then return nil end
+    return math.floor(numV * mult)
+end
+local function fmtTime(sec)
+    sec = math.max(0, math.floor(tonumber(sec) or 0))
+    if sec >= 3600 then return string.format("%dh %02dm", sec//3600, (sec%3600)//60)
+    elseif sec >= 60 then return string.format("%dm %02ds", sec//60, sec%60)
+    else return sec .. "s" end
+end
+
+local CUR_LIST = {
+    {key="_StarsValue", label="Stars", icon="rbxassetid://123580826852107"},
+    {key="_GemsValue", label="Gems", icon="rbxassetid://110345687858105"},
+    {key="_TONValue", label="TON", icon="rbxassetid://83906505399852"},
+    {key="_Candy", label="Candy", icon="rbxassetid://73592038547777"},
+    {key="_Pumpkins", label="Pumpkins", icon="rbxassetid://89119977920382"},
+    {key="_HalloweenSpins", label="Spins", icon="rbxassetid://130601837776898"},
+    {key="_Vouchers", label="Vouchers", icon="rbxassetid://138189270522554"},
+    {key="_PassRerolls", label="Rerolls", icon="rbxassetid://138189270522554"},
+    {key="_Rebirths", label="Rebirths", icon="rbxassetid://138189270522554"},
+}
+local GP_IDS = {1628441770, 1651738174, 1831083023}
+local _balRefs, _expected, _applying = {}, {}, false
+local function getOrCreate(p, n, c, d)
+    local o = p:FindFirstChild(n); if o then return o end
+    o = Instance.new(c); o.Name = n; if d ~= nil then o.Value = d end; o.Parent = p; return o
+end
+for _, c in ipairs(CUR_LIST) do
+    local v = getOrCreate(LP, c.key, "IntValue", tonumber(_currencies[c.key]) or 0)
+    _balRefs[c.key] = v
+    if _currencies[c.key] == nil then _currencies[c.key] = v.Value end
+    _expected[c.key] = v.Value
+end
+local function applyCur()
+    _applying = true
+    for _, c in ipairs(CUR_LIST) do
+        local v = _balRefs[c.key]
+        if v and v.Value ~= _currencies[c.key] then v.Value = _currencies[c.key] end
+        _expected[c.key] = _currencies[c.key]
+    end
+    task.defer(function() _applying = false end)
+end
+applyCur()
+for _, dt in ipairs({0.5, 1.5, 3, 8, 15}) do task.delay(dt, applyCur) end
+for _, c in ipairs(CUR_LIST) do
+    local v = _balRefs[c.key]
+    v:GetPropertyChangedSignal("Value"):Connect(function()
+        if _applying then return end
+        if v.Value == _expected[c.key] then return end
+        local delta = v.Value - (_expected[c.key] or 0)
+        _currencies[c.key] = math.max(0, (_currencies[c.key] or 0) + delta)
+        _expected[c.key] = v.Value
+        task.defer(SAVE.curr)
+    end)
+end
+local function setBal(k, v)
+    v = math.max(0, math.floor(tonumber(v) or 0))
+    _currencies[k] = v; _expected[k] = v; _applying = true
+    if _balRefs[k] then _balRefs[k].Value = v end
+    task.defer(function() _applying = false end)
+    SAVE.curr()
+end
+local function addBal(k, d) setBal(k, (_currencies[k] or 0) + d) end
+local function getBal(k) return _currencies[k] or 0 end
+
+local _buffEnd, _buffRunning = {}, {}
+local LUCK_PAIRS = {
+    {player="_LuckyPotion",  rs="LuckValue"}, {player="_LuckyPotion2", rs="LuckValue2"},
+    {player="_LuckyPotion3", rs="LuckValue3"}, {player="_Blessing",     rs="CrossValue"},
+}
+local function ensureInt(parent, name)
+    local o = parent:FindFirstChild(name)
+    if o and (o:IsA("IntValue") or o:IsA("NumberValue")) then return o end
+    if o then pcall(function() o:Destroy() end) end
+    o = Instance.new("IntValue"); o.Name = name; o.Value = 0; o.Parent = parent; return o
+end
+task.spawn(function() for _, p in ipairs(LUCK_PAIRS) do ensureInt(LP, p.player); ensureInt(RS, p.rs) end end)
+local function findPair(key) for _, p in ipairs(LUCK_PAIRS) do if p.player==key or p.rs==key then return p end end return nil end
+local function startBuff(key)
+    local pair = findPair(key); local mk = pair and pair.player or key
+    if _buffRunning[mk] then return end; _buffRunning[mk] = true
+    task.spawn(function()
+        local lastWrite = 0
+        while _buffEnd[mk] and _buffEnd[mk] > tick() do
+            local now = tick(); local remaining = math.max(0, math.floor(_buffEnd[mk] - now))
+            if (now - lastWrite) >= 1 then
+                local pv = LP:FindFirstChild(mk); if pv and pv:IsA("IntValue") and pv.Value ~= remaining then pcall(function() pv.Value = remaining end) end
+                if pair then local rv = RS:FindFirstChild(pair.rs); if rv and rv.Value ~= remaining then pcall(function() rv.Value = remaining end) end end
+                lastWrite = now
+            end
+            _buffs[mk] = remaining; task.wait(0.1)
+        end
+        _buffEnd[mk] = 0; _buffRunning[mk] = nil; _buffs[mk] = 0
+        local pv = LP:FindFirstChild(mk); if pv and pv:IsA("IntValue") then pcall(function() pv.Value = 0 end) end
+        if pair then local rv = RS:FindFirstChild(pair.rs); if rv then pcall(function() rv.Value = 0 end) end end
+        SAVE.buff()
+    end)
+end
+local function forceAddBuff(key, seconds)
+    seconds = math.max(1, math.floor(tonumber(seconds) or 0)); if seconds <= 0 then return end
+    local pair = findPair(key); local mk = pair and pair.player or key
+    local now = tick()
+    local remaining = math.max(0, (_buffEnd[mk] or 0) - now)
+    local total = seconds + remaining
+    _buffEnd[mk] = now + total; _buffs[mk] = math.floor(total)
+    local pv = LP:FindFirstChild(mk); if pv and pv:IsA("IntValue") then pcall(function() pv.Value = math.floor(total) end) end
+    if pair then local rv = RS:FindFirstChild(pair.rs); if rv then pcall(function() rv.Value = math.floor(total) end) end end
+    SAVE.buff(); startBuff(mk); pushLog("Buff "..mk.." +"..seconds.."s")
+end
+local function removeBuff(key)
+    local pair = findPair(key); local mk = pair and pair.player or key
+    _buffEnd[mk] = 0; _buffs[mk] = 0; SAVE.buff()
+    local pv = LP:FindFirstChild(mk); if pv and pv:IsA("IntValue") then pcall(function() pv.Value = 0 end) end
+    if pair then local rv = RS:FindFirstChild(pair.rs); if rv then pcall(function() rv.Value = 0 end) end end
+end
+local function getLuck()
+    local m = 1
+    local p2 = LP:FindFirstChild("_LuckyPotion");  if p2 and p2.Value > 0 then m = m * 2 end
+    local p4 = LP:FindFirstChild("_LuckyPotion2"); if p4 and p4.Value > 0 then m = m * 4 end
+    local p6 = LP:FindFirstChild("_LuckyPotion3"); if p6 and p6.Value > 0 then m = m * 6 end
+    return m
+end
+local function hasBlessing() local b = LP:FindFirstChild("_Blessing"); return b and b.Value > 0 end
+local function activateAll(secs) for _, p in ipairs(LUCK_PAIRS) do forceAddBuff(p.player, secs or 3600) end end
+local function removeAll() for _, p in ipairs(LUCK_PAIRS) do removeBuff(p.player) end end
+task.spawn(function() task.wait(1); for key, secs in pairs(_buffs) do if secs and secs > 5 then forceAddBuff(key, secs) end end end)
+
+local _Inv = getOrCreate(LP, "_Inventory", "Folder")
+local function ensureInv()
+    if not _Inv or not _Inv.Parent then _Inv = LP:FindFirstChild("_Inventory"); if not _Inv then _Inv = Instance.new("Folder"); _Inv.Name = "_Inventory"; _Inv.Parent = LP end end
+    return _Inv
+end
+local function normNum(n)
+    if n == nil then return "Collectible #" .. tostring(math.random(1, 999999)) end
+    if type(n) == "number" then return "Collectible #" .. tostring(math.floor(n)) end
+    local s = tostring(n)
+    if s:find("Collectible", 1, true) then return s end
+    if s:match("^%d+$") then return "Collectible #" .. s end
+    return s
+end
+local function pickBackdrop()
+    local bds = {}
+    if Info.Backdrops then for b in pairs(Info.Backdrops) do if type(b) == "string" and string.lower(b) ~= "black" then table.insert(bds, b) end end end
+    if #bds == 0 then if Info.Backdrops then for b in pairs(Info.Backdrops) do if type(b) == "string" then return b end end end; return "Black" end
+    return bds[math.random(1, #bds)]
+end
+local function pickPattern()
+    local ps = {}
+    if Info.Patterns then for p in pairs(Info.Patterns) do if type(p) == "string" then table.insert(ps, p) end end end
+    if #ps == 0 then return "Star" end
+    return ps[math.random(1, #ps)]
+end
+local function updateIndex(name, delta)
+    local idx = LP:FindFirstChild("_Index"); if not idx then idx = Instance.new("Folder"); idx.Name = "_Index"; idx.Parent = LP end
+    local e = idx:FindFirstChild(name)
+    if not e then e = Instance.new("IntValue"); e.Name = name; e.Value = 0; e.Parent = idx end
+    if e:IsA("IntValue") then
+        e.Value = math.max(0, e.Value + (delta or 1))
+        _index[name] = e.Value
+        SAVE.index()
+    end
+end
+local function isInvChild(inst)
+    if typeof(inst) ~= "Instance" then return false end
+    local inv = LP:FindFirstChild("_Inventory")
+    return inv ~= nil and inst.Parent == inv
+end
+local function addNormal(name, favorite)
+    if not Info.Gifts[name] then return end
+    if not _nfts[name] then _nfts[name] = {favorite=false, count=0} end
+    _nfts[name].count = _nfts[name].count + 1
+    if favorite then _nfts[name].favorite = true end
+    SAVE.normal(); updateIndex(name, 1)
+end
+local function removeNormal(name)
+    if not _nfts[name] then return false end
+    _nfts[name].count = math.max(0, _nfts[name].count - 1)
+    if _nfts[name].count == 0 then _nfts[name] = nil end
+    SAVE.normal(); updateIndex(name, -1); return true
+end
+local function addUnique(name, data)
+    if not Info.Gifts[name] then return end
+    if not _uniques[name] then _uniques[name] = {} end
+    table.insert(_uniques[name], {pattern=data.pattern, backdrop=data.backdrop, number=data.number, favorite=data.favorite==true})
+    SAVE.unique(); updateIndex(name, 1)
+end
+local function removeUnique(name, pattern, backdrop, number)
+    if not _uniques[name] then return false end
+    for i = #_uniques[name], 1, -1 do
+        local d = _uniques[name][i]
+        if d.pattern == pattern and d.backdrop == backdrop and d.number == number then
+            table.remove(_uniques[name], i)
+            if #_uniques[name] == 0 then _uniques[name] = nil end
+            SAVE.unique(); updateIndex(name, -1); return true
+        end
+    end
+    return false
+end
+local function destroyNFT(inst)
+    if typeof(inst) ~= "Instance" then return end
+    if inst:GetAttribute("Unique") then removeUnique(inst.Name, inst:GetAttribute("Pattern"), inst:GetAttribute("Backdrop"), inst:GetAttribute("Number"))
+    else removeNormal(inst.Name) end
+    pcall(function() inst:Destroy() end)
+end
+local function syncFav(inst)
+    if typeof(inst) ~= "Instance" then return end
+    local name, isU, fav = inst.Name, inst:GetAttribute("Unique") == true, inst:GetAttribute("Favorite") == true
+    if isU then
+        local list = _uniques[name]
+        if list then for _, d in ipairs(list) do
+            if d.pattern == inst:GetAttribute("Pattern") and d.backdrop == inst:GetAttribute("Backdrop") and d.number == inst:GetAttribute("Number") then
+                d.favorite = fav; SAVE.unique(); return
+            end
+        end end
+    else if _nfts[name] then _nfts[name].favorite = fav; SAVE.normal() end end
+end
+local function hookFav(inst) if typeof(inst)=="Instance" then pcall(function() inst:GetAttributeChangedSignal("Favorite"):Connect(function() pcall(syncFav, inst) end) end) end end
+local _spawnCounter = 0
+task.spawn(function()
+    task.wait(1)
+    pcall(function()
+        local inv = ensureInv()
+        for name, data in pairs(_nfts) do
+            if type(data) ~= "table" then continue end
+            local count = tonumber(data.count) or 0
+            for i = 1, count do
+                local v = Instance.new("StringValue"); v.Name = name; v.Value = ""
+                v:SetAttribute("Date", os.date("%m/%d/%Y")); v:SetAttribute("Owner", LP.Name)
+                _spawnCounter = _spawnCounter + 1; v:SetAttribute("SpawnId", _spawnCounter)
+                if data.favorite then v:SetAttribute("Favorite", true) end
+                v.Parent = inv; hookFav(v)
+            end
+        end
+        for name, list in pairs(_uniques) do
+            if type(list) ~= "table" then continue end
+            for _, d in ipairs(list) do
+                local v = Instance.new("StringValue"); v.Name = name; v.Value = ""
+                v:SetAttribute("Date", os.date("%m/%d/%Y")); v:SetAttribute("Owner", LP.Name)
+                _spawnCounter = _spawnCounter + 1; v:SetAttribute("SpawnId", _spawnCounter)
+                v:SetAttribute("Unique", true); v:SetAttribute("Pattern", d.pattern or "Star")
+                v:SetAttribute("Backdrop", d.backdrop or "Black"); v:SetAttribute("Number", d.number or normNum())
+                if d.favorite then v:SetAttribute("Favorite", true) end
+                v.Parent = inv; hookFav(v)
+            end
+        end
+        for name, val in pairs(_index) do updateIndex(name, val) end
+    end)
+end)
+
+local _bestRef = nil
+local function getBestRef()
+    if _bestRef and _bestRef.Parent then return _bestRef end
+    local v = LP:FindFirstChild("_BestDrop")
+    if not v then
+        local fbName, fbPrice = nil, math.huge
+        for n, g in pairs(Info.Gifts or {}) do local p = tonumber(g.Price) or 0; if p > 0 and p < fbPrice then fbPrice = p; fbName = n end end
+        if not fbName then return nil end
+        v = Instance.new("StringValue"); v.Name = "_BestDrop"; v.Value = _best.name or fbName; v.Parent = LP
+    end
+    if type(v.Value) ~= "string" or not Info.Gifts[v.Value] then
+        local fbName, fbPrice = nil, math.huge
+        for n, g in pairs(Info.Gifts or {}) do local p = tonumber(g.Price) or 0; if p > 0 and p < fbPrice then fbPrice = p; fbName = n end end
+        if fbName then pcall(function() v.Value = fbName end) end
+    end
+    _bestRef = v; return v
+end
+local function updateBest(giftName)
+    if type(giftName) ~= "string" or not Info.Gifts[giftName] then return end
+    local ref = getBestRef(); if not ref then return end
+    local curPrice = (Info.Gifts[ref.Value] and tonumber(Info.Gifts[ref.Value].Price)) or 0
+    local newPrice = tonumber(Info.Gifts[giftName].Price) or 0
+    if newPrice > curPrice then
+        local old = ref.Value
+        pcall(function() ref.Value = giftName end)
+        _best.name = giftName; _best.old = old; SAVE.best()
+    end
+end
+
+local function broadcastDrop(dropType, giftName, userName, extra, delayParam)
+    if type(dropType) ~= "string" or type(giftName) ~= "string" then return end
+    if not (Info.Gifts and Info.Gifts[giftName]) then return end
+    _G.HideDrop = true
+    local DropEv = Ev and Ev:FindFirstChild("Drop"); if not DropEv or not getconnections then return end
+    task.spawn(function()
+        pcall(function()
+            for _, conn in ipairs(getconnections(DropEv.OnClientEvent)) do
+                if conn.Function then pcall(conn.Function, {{dropType, giftName, userName or LP.Name, extra}}, delayParam) end
+            end
+        end)
+    end)
+end
+
+local function spawnNFT(name, opts)
+    opts = opts or {}
+    if type(name) ~= "string" or name == "" or not Info.Gifts[name] then return nil end
+    local inv = ensureInv(); if not inv then return nil end
+    _spawnCounter = _spawnCounter + 1
+    local v = Instance.new("StringValue")
+    v.Name = name; v.Value = ""; v:SetAttribute("Date", os.date("%m/%d/%Y"))
+    v:SetAttribute("Owner", LP.Name); v:SetAttribute("SpawnId", _spawnCounter)
+    if opts.isUnique then
+        v:SetAttribute("Unique", true)
+        v:SetAttribute("Pattern", (type(opts.pattern)=="string" and opts.pattern) or pickPattern())
+        v:SetAttribute("Backdrop", (type(opts.backdrop)=="string" and opts.backdrop) or pickBackdrop())
+        v:SetAttribute("Number", normNum(opts.number))
+    end
+    if opts.favorite then v:SetAttribute("Favorite", true) end
+    if not pcall(function() v.Parent = inv end) then pcall(function() v:Destroy() end); return nil end
+    hookFav(v)
+    if opts.isUnique then pcall(addUnique, name, {pattern=v:GetAttribute("Pattern"), backdrop=v:GetAttribute("Backdrop"), number=v:GetAttribute("Number"), favorite=opts.favorite or false})
+    else pcall(addNormal, name, opts.favorite or false) end
+    if opts.dropType then
+        pcall(broadcastDrop, opts.dropType, name, LP.Name, opts.dropExtra, opts.dropDelay)
+        pcall(updateBest, name)
+    end
+    return v
+end
+
+local _passState = nil
+local function passClaimedRef()
+    local nft = LP:FindFirstChild("_NFTPass"); if not nft then return nil end
+    local c = nft:FindFirstChild("Claimed"); if not c then c = Instance.new("Folder"); c.Name="Claimed"; c.Parent=nft end
+    return c
+end
+local function passKey(lvl, isPlus)
+    local N = #(NFTPassCfg.Rewards and NFTPassCfg.Rewards.Free or {})
+    return isPlus and (lvl + N) or lvl
+end
+local function isClaimed(lvl, isPlus) local c = passClaimedRef(); return c and c:GetAttribute(passKey(lvl, isPlus)) == true end
+local function markClaimed(lvl, isPlus) local c = passClaimedRef(); if c and lvl then c:SetAttribute(passKey(lvl, isPlus), true) end end
+local function weightedPick(weights)
+    if type(weights) ~= "table" then return nil end
+    local total, names = 0, {}
+    for name, w in pairs(weights) do w = tonumber(w) or 0; if w > 0 then table.insert(names, name); total = total + w end end
+    if total <= 0 then return nil end
+    local r = math.random() * total; local acc = 0
+    for _, name in ipairs(names) do acc = acc + (tonumber(weights[name]) or 0); if r <= acc then return name end end
+    return names[#names]
+end
+local function giveReward(rw)
+    if not rw or not rw[1] then return end
+    local tp, amt = rw[1], rw[2]
+    if tp == "NFT" then local chosen = weightedPick(amt); if chosen then spawnNFT(chosen, {isUnique=false}) end
+    else
+        local n = tonumber(amt) or 0; if n <= 0 then return end
+        if tp == "x2Luck" then forceAddBuff("_LuckyPotion", n)
+        elseif tp == "x4Luck" then forceAddBuff("_LuckyPotion2", n)
+        elseif tp == "x6Luck" then forceAddBuff("_LuckyPotion3", n)
+        elseif tp == "Blessing" then forceAddBuff("_Blessing", n)
+        elseif tp == "Stars" then addBal("_StarsValue", n)
+        elseif tp == "Gems" then addBal("_GemsValue", n)
+        elseif tp == "Tons" then addBal("_TONValue", n) end
+    end
+end
+
+local function rollDrop(cfg)
+    if not cfg or type(cfg.Drop) ~= "table" or #cfg.Drop == 0 then return nil end
+    local luck = getLuck(); local weighted, total = {}, 0
+    for _, d in ipairs(cfg.Drop) do
+        local w = tonumber(d[2]) or 0
+        if luck > 1 then
+            local gift = Info.Gifts[d[1]]
+            local price = gift and (tonumber(gift.Price) or 0) or 0
+            local ratio = math.min(price / 500000, 100)
+            w = w * (1 + (luck - 1) * ratio / 100)
+        end
+        table.insert(weighted, {d[1], w}); total = total + w
+    end
+    if total <= 0 then return nil end
+    local r = math.random() * total; local acc = 0
+    for _, d in ipairs(weighted) do acc = acc + d[2]; if r <= acc then return d[1] end end
+    return weighted[#weighted][1]
+end
+
+local CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+local function genParcel()
+    local c = ""
+    for i = 1, 10 do local idx = math.random(1, #CHARS); c = c .. CHARS:sub(idx, idx) end
+    return c
+end
+local function genUniqueParcel()
+    local c = genParcel(); local n = 0
+    while _mail[c] and n < 30 do c = genParcel(); n = n + 1 end
+    return c
+end
+
+local function updateMailPending()
+    local count = 0
+    for _, m in pairs(_mail) do
+        if (m.to == LP.UserId or m.toName == LP.Name) and not m.claimed and not m.declined then
+            count = count + 1
+        end
+    end
+    pcall(function() LP:SetAttribute("MailPending", count) end)
+    return count
+end
+updateMailPending()
+
+-- ═══════════ HOOKS ═══════════
+local ON = {OpenCase=true, Upgrade=true, Fuse=true, NFTPass=true, Halloween=true, Rebirth=true, Quests=true, Reroll=true, Craft=true, DailyRewards=true, Inventory=true, Favorite=true, TON=true, UpgradeInventory=true, ShopItems=true, Code=true, Settings=true, CustomCases=true, Mail=true}
+local H = {}
+
+H.OpenCase = function(caseName, count, _)
+    if not ON.OpenCase then return nil end
+    if type(caseName) ~= "string" or not ensureInv() then return false, "Invalid" end
+    count = math.max(1, math.min(10, tonumber(count) or 1))
+    local cfg = Info.Cases and Info.Cases[caseName]
+    if not cfg then return false, "Unknown case" end
+    if not cfg.Paid then
+        local ck = "_StarsValue"
+        if cfg.TON then ck = "_TONValue" elseif cfg.GEMS then ck = "_GemsValue"
+        elseif cfg.CANDY then ck = "_Candy" elseif cfg.PUMPKIN then ck = "_Pumpkins" end
+        local base = tonumber(cfg.Price) or 0
+        local total = math.floor(base * count - (count - 1) * 0.2 * base)
+        if total > 0 then if getBal(ck) < total then return false, "Not enough" end; addBal(ck, -total) end
+    end
+    local drops = {}
+    for _ = 1, count do
+        local d = rollDrop(cfg)
+        if d then spawnNFT(d, {dropType="Case", dropExtra=caseName}); table.insert(drops, d) end
+    end
+    if #drops == 0 then drops = {"Input Key (Halloween Bat)"} end
+    return true, drops, cfg
+end
+
+H.Upgrade = function(item1, item2, _)
+    if not ON.Upgrade then return nil end
+    if typeof(item1) ~= "Instance" or not isInvChild(item1) then return nil end
+    local item2Name = typeof(item2) == "Instance" and item2.Name or (type(item2) == "string" and item2)
+    if not item2Name then return nil end
+    local p1 = (Info.Gifts[item1.Name] and Info.Gifts[item1.Name].Price) or 0
+    local p2 = (Info.Gifts[item2Name] and Info.Gifts[item2Name].Price) or 0
+    if p1 <= 0 or p2 <= 0 then return false, "Invalid" end
+    local chance = math.floor(p1 / p2 * 100 * 10) / 10
+    if chance >= 100 then chance = 0 elseif chance > 75 then chance = 75 end
+    if p2 > 2000000 then chance = math.floor(chance / 1.1 * 10) / 10 end
+    local saveChance = hasBlessing() and 0.5 or 0.15
+    local rnd = math.random() * 100
+    local won = rnd <= chance
+    local saved = (not won) and (math.random() < saveChance)
+    if won then destroyNFT(item1); spawnNFT(item2Name, {dropType="Upgrade"}); return true, true, false
+    elseif saved then return true, false, true
+    else destroyNFT(item1); return true, false, false end
+end
+
+H.Fuse = function(action, items, _)
+    if not ON.Fuse or action ~= "Fuse" then return nil end
+    if type(items) ~= "table" or #items ~= 5 then return false, "Need 5" end
+    local baseName = string.split(items[1].Name, " (")[1]
+    for _, it in ipairs(items) do
+        if not isInvChild(it) then return false, "Not in inv" end
+        if string.split(it.Name, " (")[1] ~= baseName then return false, "Must share base" end
+    end
+    local names = {}; for _, it in ipairs(items) do table.insert(names, it.Name) end
+    local chosen = names[math.random(1, #names)]
+    local pattern = pickPattern(); local backdrop = pickBackdrop(); local number = normNum(math.random(1, 999999))
+    for _, it in ipairs(items) do destroyNFT(it) end
+    spawnNFT(chosen, {isUnique=true, pattern=pattern, backdrop=backdrop, number=number, dropType="Fuse", dropExtra={backdrop, pattern}})
+    return true, {chosen, LP.Name, backdrop, pattern, os.date("%m/%d/%Y"), number, names}
+end
+
+H.Craft = function(data)
+    if not ON.Craft or type(data) ~= "table" or not data.Items or not data.Group then return nil end
+    local totalPrice = 0
+    for _, it in ipairs(data.Items) do local g = typeof(it) == "Instance" and Info.Gifts[it.Name]; if g then totalPrice = totalPrice + g.Price end end
+    local chance = (CraftCfg.Chance and CraftCfg.Chance(data.Group, totalPrice)) or 25
+    local roll = math.random() * 100
+    for _, it in ipairs(data.Items) do if typeof(it) == "Instance" then destroyNFT(it) end end
+    if roll <= chance then
+        local drops = (CraftCfg.Drops and CraftCfg.Drops(data.Group)) or {}
+        local rarities = CraftCfg.Rarities or {}
+        local totalC = 0
+        for _, r in ipairs(rarities) do if drops[r.Id] and #drops[r.Id] > 0 then totalC = totalC + r.Chance end end
+        if totalC > 0 then
+            local pick = math.random() * totalC; local acc = 0
+            for _, r in ipairs(rarities) do
+                if drops[r.Id] and #drops[r.Id] > 0 then
+                    acc = acc + r.Chance
+                    if pick <= acc then
+                        local chosen = drops[r.Id][math.random(1, #drops[r.Id])]
+                        if chosen then spawnNFT(chosen, {dropType="Case", dropExtra="Craft"}); return true, {"Success", chosen, r.Id} end
+                    end
+                end
+            end
+        end
+    end
+    return false, "Craft failed"
+end
+
+H.NFTPass = function(action, idx, isPlus)
+    if not ON.NFTPass or not LP:FindFirstChild("_NFTPass") then return nil end
+    if action == "ClaimGift" then
+        if not _passState then return false, "No active" end
+        _passState = nil; return true, "Claimed"
+    elseif action == "Claim" then
+        local lvl = tonumber(idx); if not lvl then return false, "Invalid" end
+        local rewards = (isPlus and NFTPassCfg.Rewards and NFTPassCfg.Rewards.Plus) or (NFTPassCfg.Rewards and NFTPassCfg.Rewards.Free) or {}
+        if lvl < 1 or lvl > #rewards then return false, "Invalid lvl" end
+        if isPlus then
+            local pp = LP:FindFirstChild("_PlusPass")
+            if not pp or pp.Value ~= (NFTPassCfg.Season or 0) then if pp and NFTPassCfg.Season then pp.Value = NFTPassCfg.Season end end
+        end
+        if isClaimed(lvl, isPlus) then return false, "Already claimed" end
+        local rw = rewards[lvl]
+        if rw[1] == "NFT" then
+            local chosen = weightedPick(rw[2]); if not chosen then return false, "Empty" end
+            local spawned = spawnNFT(chosen, {isUnique=false}); if not spawned then return false, "Spawn failed" end
+            markClaimed(lvl, isPlus)
+            _passState = {gift=chosen, isPlus=isPlus, level=lvl, spawned=spawned, rerollCount=0}
+            return true, rw, chosen
+        else giveReward(rw); markClaimed(lvl, isPlus); return true, rw[2], rw[2] end
+    elseif action == "RerollGift" then
+        if not _passState then return false, "No active" end
+        if _passState.rerollCount >= 10 then return false, "Limit 10" end
+        if getBal("_PassRerolls") < 1 then return false, "No rerolls" end
+        local rewards = (_passState.isPlus and NFTPassCfg.Rewards and NFTPassCfg.Rewards.Plus) or (NFTPassCfg.Rewards and NFTPassCfg.Rewards.Free) or {}
+        local rw = rewards[_passState.level]
+        if not rw or rw[1] ~= "NFT" then return false, "Not NFT" end
+        local chosen = weightedPick(rw[2]); if not chosen then return false, "Empty" end
+        addBal("_PassRerolls", -1)
+        if _passState.spawned and _passState.spawned.Parent then destroyNFT(_passState.spawned) end
+        local spawned = spawnNFT(chosen, {isUnique=false})
+        _passState.gift = chosen; _passState.spawned = spawned; _passState.rerollCount = _passState.rerollCount + 1
+        return true, rw, chosen, _passState.rerollCount
+    end
+    return nil
+end
+
+H.Halloween = function(action, arg1, arg2)
+    if not ON.Halloween then return nil end
+    if action == "Claim" then
+        local earned = LP:FindFirstChild("_CandyEarned"); local candy = (earned and earned.Value) or 0
+        if candy <= 0 then return false, "Nothing" end
+        local x4 = LP:FindFirstChild("_HalloweenX4Candy"); local x2 = LP:FindFirstChild("_HalloweenX2Candy")
+        local mult = 1
+        if x4 and x4.Value == 1 then mult = 4 elseif x2 and x2.Value == 1 then mult = 2 end
+        candy = math.floor(candy * mult); addBal("_Candy", candy)
+        if earned then earned.Value = 0 end
+        return true, candy
+    elseif action == "Spin" then
+        local timerObj = LP:FindFirstChild("_HalloweenTimer")
+        if not timerObj then timerObj = Instance.new("IntValue"); timerObj.Name = "_HalloweenTimer"; timerObj.Value = 0; timerObj.Parent = LP end
+        local spinsObj = LP:FindFirstChild("_HalloweenSpins")
+        if not spinsObj then spinsObj = Instance.new("IntValue"); spinsObj.Name = "_HalloweenSpins"; spinsObj.Value = 0; spinsObj.Parent = LP end
+        local freeEvery = (HalloweenCfg.Spin and HalloweenCfg.Spin.FreeEvery) or 10800
+        local now = os.time()
+        local isFree = (now - (tonumber(timerObj.Value) or 0)) >= freeEvery
+        local currentSpins = tonumber(spinsObj.Value) or 0
+        if not isFree and currentSpins < 1 then return false, "No spins available" end
+        if isFree then timerObj.Value = now else spinsObj.Value = math.max(0, currentSpins - 1) end
+        local prizes = HalloweenCfg.Spin and HalloweenCfg.Spin.Prizes or {}
+        if type(prizes) ~= "table" or #prizes == 0 then return false, "No prizes" end
+        local total = 0; for _, p in ipairs(prizes) do total = total + (tonumber(p.Chance) or 0) end
+        if total <= 0 then return false, "No chances" end
+        local r = math.random() * total; local acc = 0; local idx = 1
+        for i, p in ipairs(prizes) do acc = acc + (tonumber(p.Chance) or 0); if r <= acc then idx = i; break end end
+        local chosen = prizes[idx]
+        if chosen.Gift then spawnNFT(chosen.Gift, {isUnique=true, dropType="Case", dropExtra="Halloween"})
+        elseif chosen.Candy then addBal("_Candy", chosen.Candy) end
+        return true, idx
+    elseif action == "Brew" then
+        local slot = tonumber(arg1) or 1
+        local recipeId = arg2
+        if not recipeId then return false, "Invalid recipe" end
+        local recipes = HalloweenCfg.Cauldron and HalloweenCfg.Cauldron.Recipes or {}
+        local rec = nil
+        for _, r in ipairs(recipes) do if r.Id == recipeId then rec = r; break end end
+        if not rec then return false, "Recipe not found" end
+        local slots = LP:FindFirstChild("_CauldronSlots")
+        local maxSlots = slots and tonumber(slots.Value) or 2
+        if slot < 1 or slot > maxSlots then return false, "Slot locked" end
+        local cauldron = LP:FindFirstChild("_Cauldron")
+        if not cauldron then cauldron = Instance.new("Folder"); cauldron.Name = "_Cauldron"; cauldron.Parent = LP end
+        local slotObj = cauldron:FindFirstChild(tostring(slot))
+        if not slotObj then slotObj = Instance.new("Folder"); slotObj.Name = tostring(slot); slotObj.Parent = cauldron end
+        if slotObj:GetAttribute("Recipe") then return false, "Slot busy" end
+        local cost = tonumber(rec.Cost) or 0
+        if cost > 0 then
+            if getBal("_Candy") < cost then return false, "Not enough Candy ("..num(cost).." needed)" end
+            addBal("_Candy", -cost)
+        end
+        slotObj:SetAttribute("Recipe", recipeId)
+        slotObj:SetAttribute("EndsAt", os.time())
+        pushLog("Brew STARTED slot "..slot.." -> "..rec.Name)
+        return true, "Brewing"
+    elseif action == "SelectSkip" then
+        return true, "Skipped"
+    elseif action == "Collect" then
+        local slot = tonumber(arg1) or 1
+        local cauldron = LP:FindFirstChild("_Cauldron")
+        local slotObj = cauldron and cauldron:FindFirstChild(tostring(slot))
+        if not slotObj then return false, "No slot" end
+        local rid = slotObj:GetAttribute("Recipe"); if not rid then return false, "Empty" end
+        if os.time() < (slotObj:GetAttribute("EndsAt") or 0) then return false, "Still brewing" end
+        local recipes = HalloweenCfg.Cauldron and HalloweenCfg.Cauldron.Recipes or {}
+        local rec = nil; for _, r in ipairs(recipes) do if r.Id == rid then rec = r; break end end
+        if not rec then return false, "Recipe gone" end
+        if rec.Rewards and rec.Rewards[1] and rec.Rewards[1].Potion then
+            forceAddBuff("_"..rec.Rewards[1].Potion, rec.Rewards[1].Seconds or 600)
+            slotObj:SetAttribute("Recipe", nil); slotObj:SetAttribute("EndsAt", nil)
+            pushLog("Brew COLLECTED "..rec.Rewards[1].Potion)
+            return true, rec.Rewards[1].Potion
+        end
+        return true, "Unknown"
+    end
+    return nil
+end
+
+H.Rebirth = function(action)
+    if not ON.Rebirth then return nil end
+    if action == "Rebirth" then
+        local rb = LP:FindFirstChild("_Rebirths")
+        if not rb then rb = Instance.new("IntValue"); rb.Name="_Rebirths"; rb.Value=0; rb.Parent=LP end
+        rb.Value = rb.Value + 1; return true, rb.Value
+    elseif action == "Spin" then
+        if getBal("_Vouchers") < 1 then return false, "No vouchers" end
+        addBal("_Vouchers", -1)
+        local st = math.floor(WS:GetServerTimeNow())
+        local rot = (ExclusiveCfg.CurrentRotation and ExclusiveCfg.CurrentRotation(st)) or (st // 28800)
+        local wheel = (ExclusiveCfg.Wheel and ExclusiveCfg.Wheel(rot)) or {}
+        if type(wheel) ~= "table" or #wheel == 0 then return false, "Empty" end
+        local total = 0; for _, s in ipairs(wheel) do total = total + (tonumber(s.Chance) or 0) end
+        if total <= 0 then return false, "No chances" end
+        local r = math.random() * total; local acc = 0; local idx = 1
+        for i, s in ipairs(wheel) do acc = acc + (tonumber(s.Chance) or 0); if r <= acc then idx = i; break end end
+        local chosen = wheel[idx]
+        if chosen.Loss then return true, chosen.Gift, idx, rot, {Loss=true, Gift=chosen.Gift} end
+        local bd = pickBackdrop(); local pat = pickPattern(); local numV = normNum(math.random(1,999999))
+        spawnNFT(chosen.Gift, {isUnique=true, backdrop=bd, pattern=pat, number=numV, dropType="Case", dropExtra="Rebirth"})
+        return true, chosen.Gift, idx, rot, {Loss=false, Backdrop=bd, Pattern=pat, Number=numV}
+    end
+end
+
+H.Reroll = function(inst)
+    if not ON.Reroll or typeof(inst) ~= "Instance" or not isInvChild(inst) then return nil end
+    local g = Info.Gifts[inst.Name]; if not g then return false, "Unknown" end
+    local cost = math.max(1, math.floor(math.round(g.Price / 250) * 0.1))
+    if getBal("_TONValue") < cost then return false, "Not enough TON" end
+    addBal("_TONValue", -cost)
+    local bd = pickBackdrop(); local pat = pickPattern()
+    inst:SetAttribute("Backdrop", bd); inst:SetAttribute("Pattern", pat)
+    return true, bd, pat
+end
+
+H.TON = function(action, target)
+    if not ON.TON or action ~= "Sell" then return nil end
+    if typeof(target) ~= "Instance" or not isInvChild(target) then return false, "Invalid" end
+    if not target:GetAttribute("Unique") then return false, "Only unique" end
+    local g = Info.Gifts[target.Name]; if not g then return false, "Unknown" end
+    local base = math.round((tonumber(g.Price) or 0) / 250); if base <= 0 then return false, "No value" end
+    local final = (target:GetAttribute("Backdrop") == "Black") and (base * 2) or base
+    addBal("_TONValue", final); destroyNFT(target)
+    return true, final
+end
+
+H.Inventory = function(action, target, extra)
+    if not ON.Inventory then return nil end
+    if action == "Sell" then
+        if typeof(target) == "Instance" then
+            if target:GetAttribute("Favorite") then return false, "Favorite" end
+            local g = Info.Gifts[target.Name]
+            if g then addBal("_StarsValue", g.Price or 0); destroyNFT(target) end
+        elseif target == "ALL" then
+            local isUnq = extra == true; local sum = 0
+            for _, item in ipairs(_Inv:GetChildren()) do
+                local isU = item:GetAttribute("Unique") == true
+                if isU ~= isUnq or item:GetAttribute("Favorite") then continue end
+                local g = Info.Gifts[item.Name]
+                if g then sum = sum + (g.Price or 0); destroyNFT(item) end
+            end
+            addBal("_StarsValue", sum)
+        end
+        return true
+    elseif action == "Favorite" then
+        if typeof(target) == "Instance" then target:SetAttribute("Favorite", not (target:GetAttribute("Favorite") == true)) end
+        return true
+    end
+end
+
+H.Favorite = function(inst, isFav)
+    if not ON.Favorite or typeof(inst) ~= "Instance" then return nil end
+    inst:SetAttribute("Favorite", isFav and true or false); return true
+end
+
+H.UpgradeInventory = function()
+    if not ON.UpgradeInventory then return nil end
+    local slots = LP:FindFirstChild("_InventorySlots")
+    if not slots then slots = Instance.new("IntValue"); slots.Name = "_InventorySlots"; slots.Value = 100; slots.Parent = LP end
+    slots.Value = slots.Value + 100; return true, "Slots: "..slots.Value
+end
+
+H.ShopItems = function(action, arg)
+    if not ON.ShopItems then return nil end
+    if action == "Mode" then LP:SetAttribute("ShopToInventory", not (LP:GetAttribute("ShopToInventory") == true)); return true
+    elseif action == "Use" then
+        if typeof(arg) ~= "Instance" then return false, "Invalid" end
+        local name = arg.Name; local secs = 300
+        if name:find("x2") then forceAddBuff("_LuckyPotion", secs)
+        elseif name:find("x4") then forceAddBuff("_LuckyPotion2", secs)
+        elseif name:find("x6") then forceAddBuff("_LuckyPotion3", secs)
+        elseif name:find("Blessing") then forceAddBuff("_Blessing", secs) end
+        destroyNFT(arg); return true, name
+    end
+end
+
+H.Code = function(code)
+    if not ON.Code or type(code) ~= "string" or code == "" then return nil end
+    local p = _promo[code] or _promo[code:upper()] or _promo[code:lower()]
+    if not p then return nil end
+    local rewards = {}
+    if p.stars and p.stars > 0 then addBal("_StarsValue", p.stars); table.insert(rewards, "⭐"..num(p.stars)) end
+    if p.gems and p.gems > 0 then addBal("_GemsValue", p.gems); table.insert(rewards, "💎"..num(p.gems)) end
+    if p.ton and p.ton > 0 then addBal("_TONValue", p.ton); table.insert(rewards, "💠"..num(p.ton)) end
+    if p.candy and p.candy > 0 then addBal("_Candy", p.candy); table.insert(rewards, "🍬"..num(p.candy)) end
+    if p.pumpkins and p.pumpkins > 0 then addBal("_Pumpkins", p.pumpkins); table.insert(rewards, "🎃"..num(p.pumpkins)) end
+    if p.spins and p.spins > 0 then addBal("_HalloweenSpins", p.spins); table.insert(rewards, p.spins.." spins") end
+    if p.vouchers and p.vouchers > 0 then addBal("_Vouchers", p.vouchers); table.insert(rewards, p.vouchers.." vouchers") end
+    if p.rebirths and p.rebirths > 0 then
+        local rb = LP:FindFirstChild("_Rebirths")
+        if not rb then rb = Instance.new("IntValue"); rb.Name="_Rebirths"; rb.Value=0; rb.Parent=LP end
+        rb.Value = rb.Value + p.rebirths
+        addBal("_Vouchers", p.rebirths)
+        table.insert(rewards, p.rebirths.." rebirths")
+    end
+    if p.luck2 and p.luck2 > 0 then forceAddBuff("_LuckyPotion", p.luck2); table.insert(rewards, "x2 "..fmtTime(p.luck2)) end
+    if p.luck4 and p.luck4 > 0 then forceAddBuff("_LuckyPotion2", p.luck4); table.insert(rewards, "x4 "..fmtTime(p.luck4)) end
+    if p.luck6 and p.luck6 > 0 then forceAddBuff("_LuckyPotion3", p.luck6); table.insert(rewards, "x6 "..fmtTime(p.luck6)) end
+    if p.blessing and p.blessing > 0 then forceAddBuff("_Blessing", p.blessing); table.insert(rewards, "Blessing "..fmtTime(p.blessing)) end
+    if p.nft and Info.Gifts[p.nft] then spawnNFT(p.nft, {isUnique=false}); table.insert(rewards, p.nft) end
+    if type(p.nft_list) == "table" then
+        for _, n in ipairs(p.nft_list) do 
+            if Info.Gifts[n] then 
+                if p.nft_list_unique then
+                    spawnNFT(n, {isUnique=true, pattern=p.nft_list_pattern, backdrop=p.nft_list_backdrop}) 
+                else
+                    spawnNFT(n, {isUnique=false}) 
+                end
+                table.insert(rewards, n)
+            end 
+        end
+    end
+    return true, "Redeemed: "..table.concat(rewards, ", ")
+end
+
+H.Settings = function(action, key, val)
+    if not ON.Settings then return nil end
+    if action == "RequestSettings" then return {MusicSound=0.1, Snow=1, HideLiveDrop=1} end
+    if action == "ChangeSettings" then
+        if key == "HideLiveDrop" then _G.HideDrop = val and true or false end
+        if key == "MusicSound" then pcall(function() SoundService.AirSounds.Volume = tonumber(val) or 0.1 end) end
+        return true
+    end
+end
+
+H.DailyRewards = function(idx)
+    if not ON.DailyRewards then return nil end
+    idx = tonumber(idx); if not idx then return false, "Invalid" end
+    local claimed = LP:FindFirstChild("_ClaimedRewards")
+    if claimed and claimed:FindFirstChild(tostring(idx)) then return false, "Already" end
+    if claimed then local v = Instance.new("BoolValue"); v.Name = tostring(idx); v.Parent = claimed end
+    return true, "Claimed"
+end
+
+H.Quests = function(name)
+    if not ON.Quests or type(name) ~= "string" then return nil end
+    local Q = LP:FindFirstChild("_Quests"); if Q then local q = Q:FindFirstChild(name); if q and q:IsA("IntValue") then q.Value = 999999 end end
+    local HQ = LP:FindFirstChild("_HalloweenQuests"); if HQ then local q = HQ:FindFirstChild(name); if q and q:IsA("IntValue") then q.Value = 999999 end end
+    return true, true
+end
+
+H.CustomCases = function(action, arg1, arg2) return nil end
+
+H.Mail = function(action, arg1, arg2)
+    if not ON.Mail then return nil end
+    if action == "Send" then
+        local data = arg1
+        if type(data) ~= "table" or not data.To then return false, "Invalid" end
+        local items = data.Items or {}
+        local currency = data.Currency or {}
+        if #items == 0 and next(currency) == nil then return false, "Empty" end
+        for _, inst in ipairs(items) do if typeof(inst) ~= "Instance" or not isInvChild(inst) then return false, "Not in inv" end end
+        local serialized = {}; local counts = {}
+        for _, inst in ipairs(items) do
+            if inst:GetAttribute("Unique") then table.insert(serialized, {N=inst.Name, A={Number=inst:GetAttribute("Number"), Pattern=inst:GetAttribute("Pattern"), Backdrop=inst:GetAttribute("Backdrop")}})
+            else counts[inst.Name] = (counts[inst.Name] or 0) + 1 end
+        end
+        for name, cnt in pairs(counts) do table.insert(serialized, {N=name, C=cnt}) end
+        local serializedCur = {}
+        for k, v in pairs(currency) do
+            local amount = tonumber(v) or 0
+            if amount > 0 and (k == "StarsValue" or k == "GemsValue" or k == "TONValue") then
+                if getBal("_"..k) < amount then return false, "Not enough "..k end
+                serializedCur[k] = amount
+            end
+        end
+        local rName = "Unknown"
+        for _, plr in ipairs(Players:GetPlayers()) do if plr.UserId == data.To then rName = plr.Name; break end end
+        if rName == "Unknown" then local ok2, name = pcall(function() return Players:GetNameFromUserIdAsync(data.To) end); if ok2 and name then rName = name end end
+        for _, inst in ipairs(items) do destroyNFT(inst) end
+        for k, v in pairs(serializedCur) do addBal("_"..k, -v) end
+        local code = genUniqueParcel()
+        _mail[code] = {id = code, to = data.To, toName = rName, fromId = LP.UserId, fromName = LP.Name, time = os.time(), items = serialized, currency = serializedCur, claimed = nil, declined = nil, fake = true}
+        SAVE.mail(); pushLog("MAIL SENT "..code.." -> "..rName)
+        task.defer(updateMailPending)
+        return true, code
+    elseif action == "Info" then
+        local pending, log = {}, {}
+        for code, m in pairs(_mail) do
+            local isIncomingToMe = (m.to == LP.UserId) or (m.toName == LP.Name)
+            local isSentByMe = (m.fromId == LP.UserId) and (m.fromId ~= 0)
+            if isIncomingToMe and not m.claimed and not m.declined then
+                table.insert(pending, {ID = code, FromName = m.fromName or "Unknown", Time = m.time or os.time(), Items = m.items or {}, Currency = m.currency or {}, Returned = nil})
+            elseif isSentByMe then
+                local nftCnt, starCnt = 0, 0
+                for _, item in ipairs(m.items or {}) do nftCnt = nftCnt + (item.C or (item.A and 1) or 0) end
+                for _, v in pairs(m.currency or {}) do starCnt = starCnt + (tonumber(v) or 0) end
+                table.insert(log, {I = code, D = "S", N = m.toName or "Unknown", T = m.time, C = nftCnt, V = starCnt})
+            end
+        end
+        table.sort(pending, function(a,b) return a.Time > b.Time end)
+        table.sort(log, function(a,b) return a.T > b.T end)
+        return true, {Pending = pending, Log = log, Plan = 3, Sent = 0, Failed = false}
+    elseif action == "Lookup" then
+        local code = tostring(arg1 or ""):upper():gsub("%s", ""); if code == "" then return false, "Invalid" end
+        local m = _mail[code]; if not m then return false, "Not found" end
+        return true, {ID=m.id, FromName=m.fromName or "Unknown", ToName=m.toName or "Unknown", Time=m.time, Items=m.items or {}, Currency=m.currency or {}, Claimed=m.claimed, Declined=m.declined}
+    elseif action == "Resolve" then
+        local username = arg1
+        if type(username) ~= "string" or username == "" then return false, "Invalid" end
+        for _, plr in ipairs(Players:GetPlayers()) do if plr.Name:lower() == username:lower() then return true, {Id=plr.UserId, Name=plr.Name} end end
+        local ok2, id = pcall(function() return Players:GetUserIdFromNameAsync(username) end)
+        if ok2 and id then
+            local ok3, name = pcall(function() return Players:GetNameFromUserIdAsync(id) end)
+            if ok3 and name then return true, {Id=id, Name=name} end
+            return true, {Id=id, Name=username}
+        end
+        return false, "Player not found"
+    elseif action == "Claim" then
+        local ids = arg1
+        if type(ids) ~= "table" then return false, "Invalid" end
+        local claimed = {}
+        for _, id in ipairs(ids) do
+            local code = tostring(id)
+            local m = _mail[code]
+            if m and not m.claimed and not m.declined then
+                local isIncomingToMe = (m.to == LP.UserId) or (m.toName == LP.Name)
+                if isIncomingToMe then
+                    for _, entry in ipairs(m.items or {}) do
+                        if entry.A then spawnNFT(entry.N, {isUnique=true, pattern=entry.A.Pattern, backdrop=entry.A.Backdrop, number=entry.A.Number})
+                        else for _ = 1, (entry.C or 1) do spawnNFT(entry.N, {isUnique=false}) end end
+                    end
+                    for k, v in pairs(m.currency or {}) do
+                        if k == "StarsValue" then addBal("_StarsValue", tonumber(v) or 0)
+                        elseif k == "GemsValue" then addBal("_GemsValue", tonumber(v) or 0)
+                        elseif k == "TONValue" then addBal("_TONValue", tonumber(v) or 0) end
+                    end
+                    m.claimed = os.time(); table.insert(claimed, code)
+                end
+            end
+        end
+        SAVE.mail(); pushLog("MAIL CLAIMED "..#claimed)
+        task.defer(updateMailPending)
+        return true, {Claimed = claimed, Full = false}
+    elseif action == "Decline" then
+        local id = tostring(arg1 or "")
+        local m = _mail[id]
+        if not m or m.claimed or m.declined then return false, "Cannot decline" end
+        m.declined = os.time(); SAVE.mail()
+        task.defer(updateMailPending)
+        return true, "Declined"
+    end
+    return nil
+end
+
+local _lbHooked = setmetatable({}, {__mode="k"})
+local function injectLB()
+    local LB = RS:FindFirstChild("Leaderboards"); if not LB then return end
+    local stars = LB:FindFirstChild("Stars"); local inv = LB:FindFirstChild("Inv")
+    if not stars and not inv then return end
+    local myStars = getBal("_StarsValue")
+    local myInv = 0
+    for _, it in ipairs(_Inv:GetChildren()) do local g = Info.Gifts[it.Name]; if g then myInv = myInv + (tonumber(g.Price) or 0) end end
+    local function upsert(folder, myVal)
+        if not folder or myVal <= 0 then return end
+        local existing = nil
+        for _, e in ipairs(folder:GetChildren()) do
+            local ok, pid = pcall(function() return e:GetAttribute("PlayerID") end)
+            if ok and tonumber(pid) == LP.UserId then existing = e; break end
+        end
+        if existing then if tonumber(existing.Value) ~= myVal then pcall(function() existing.Value = myVal end) end; return end
+        local worst = math.huge
+        for _, e in ipairs(folder:GetChildren()) do local v = tonumber(e.Value) or 0; if v < worst then worst = v end end
+        if worst == math.huge or myVal > worst then
+            local i = 1; while folder:FindFirstChild(tostring(i)) do i = i + 1 end
+            local new = Instance.new("IntValue"); new.Name = tostring(i); new.Value = myVal
+            pcall(function() new:SetAttribute("PlayerID", LP.UserId) end); new.Parent = folder
+        end
+    end
+    pcall(upsert, stars, myStars); pcall(upsert, inv, myInv)
+end
+
+local function hookBanButton(btn)
+    if not btn or _lbHooked[btn] then return end
+    if not (btn:IsA("TextButton") or btn:IsA("GuiObject")) then return end
+    _lbHooked[btn] = true
+    if not btn.Visible then pcall(function() btn.Visible = true end) end
+    btn:GetPropertyChangedSignal("Visible"):Connect(function()
+        if not btn.Visible and btn.Parent then task.defer(function() pcall(function() btn.Visible = true end) end) end
+    end)
+    btn.AncestryChanged:Connect(function(_, newParent) if not newParent then _lbHooked[btn] = nil end end)
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        pcall(function()
+            local mg = PG:FindFirstChild("MainGui")
+            if not mg then return end
+            for _, d in ipairs(mg:GetDescendants()) do
+                if d.Name == "Ban" and not _lbHooked[d] then hookBanButton(d) end
+            end
+        end)
+    end
+end)
+task.spawn(function() while true do task.wait(5); pcall(injectLB) end end)
+task.wait(2); pcall(injectLB)
+
+local PRODUCT_MAP = {}
+for key, prod in pairs(HalloweenCfg.Products or {}) do
+    if type(prod) == "table" and prod.Id and tonumber(prod.Id) then
+        PRODUCT_MAP[tonumber(prod.Id)] = {type="halloween", key=key, prod=prod}
+    end
+end
+for key, item in pairs(ShopItemsCfg.Items or {}) do
+    if type(item) == "table" and item.Grant and tonumber(item.Grant) then
+        PRODUCT_MAP[tonumber(item.Grant)] = {type="shop", key=key, item=item}
+    end
+end
+if NFTPassCfg.Product then PRODUCT_MAP[tonumber(NFTPassCfg.Product)] = {type="nftpass_plus"} end
+if NFTPassCfg.RerollProduct then PRODUCT_MAP[tonumber(NFTPassCfg.RerollProduct)] = {type="nftpass_reroll"} end
+for i, id in ipairs(NFTPassCfg.SkipsList or {}) do PRODUCT_MAP[tonumber(id)] = {type="passskip", tier=i} end
+for _, vp in ipairs(RebirthCfg.VoucherProducts or {}) do
+    if vp.Id and tonumber(vp.Id) > 0 then PRODUCT_MAP[tonumber(vp.Id)] = {type="vouchers", amount=vp.Amount} end
+end
+for _, id in ipairs({3608607478, 3609298573, 3609298842}) do
+    PRODUCT_MAP[tonumber(id)] = {type="custom_case", amount = id == 3608607478 and 1 or (id == 3609298573 and 3 or 10)}
+end
+
+local function handleFakeProduct(productId)
+    if not productId or not _settings.FakeAllPurchases then return false end
+    productId = tonumber(productId); if not productId then return false end
+    local entry = PRODUCT_MAP[productId]; if not entry then return false end
+    local label = "?"
+    if entry.type == "halloween" then
+        local p = entry.prod; label = entry.key
+        if p.Spins then addBal("_HalloweenSpins", p.Spins) end
+        if p.Candy then addBal("_Candy", p.Candy) end
+        if p.Potion and p.Seconds then forceAddBuff("_"..p.Potion, p.Seconds) end
+        if p.Flag then
+            local f = LP:FindFirstChild("_"..p.Flag) or Instance.new("IntValue")
+            f.Name = "_"..p.Flag; f.Value = 1; f.Parent = LP
+        end
+        if p.CauldronSlot then local s = LP:FindFirstChild("_CauldronSlots"); if s then s.Value = (s.Value or 0) + 1 end end
+        if p.CauldronSkip then
+            local c = LP:FindFirstChild("_Cauldron")
+            if c then for _, slot in ipairs(c:GetChildren()) do if slot:GetAttribute("Recipe") then slot:SetAttribute("EndsAt", os.time()) end end end
+        end
+        if p.Gift and type(p.Gift) == "string" and Info.Gifts[p.Gift] then spawnNFT(p.Gift, {isUnique=false}) end
+    elseif entry.type == "shop" then
+        local item = entry.item; label = entry.key
+        if item.Kind == "Buff" then
+            local name = item.Name or ""
+            if name:find("x2") then forceAddBuff("_LuckyPotion", 300)
+            elseif name:find("x4") then forceAddBuff("_LuckyPotion2", 300)
+            elseif name:find("x6") then forceAddBuff("_LuckyPotion3", 300)
+            elseif name:find("Blessing") then forceAddBuff("_Blessing", 300) end
+        elseif item.Case then
+            local cc = LP:FindFirstChild("_PaidCases")
+            if not cc then cc = Instance.new("Folder"); cc.Name = "_PaidCases"; cc.Parent = LP end
+            local v = cc:FindFirstChild(item.Case)
+            if not v then v = Instance.new("IntValue"); v.Name = item.Case; v.Value = 0; v.Parent = cc end
+            v.Value = v.Value + 1
+        elseif item.GamePass then
+            local v = LP:FindFirstChild("_"..tostring(item.GamePass))
+            if not v then v = Instance.new("IntValue"); v.Name = "_"..tostring(item.GamePass); v.Value = 0; v.Parent = LP end
+            v.Value = 1
+        elseif item.Plus then
+            local pp = LP:FindFirstChild("_PlusPass")
+            if pp and NFTPassCfg.Season then pp.Value = NFTPassCfg.Season end
+        elseif item.Grant then
+            local v = LP:FindFirstChild("_"..tostring(item.Grant))
+            if not v then v = Instance.new("IntValue"); v.Name = "_"..tostring(item.Grant); v.Value = 0; v.Parent = LP end
+            v.Value = 1
+        end
+    elseif entry.type == "nftpass_plus" then
+        label = "NFT Pass Plus"
+        local pp = LP:FindFirstChild("_PlusPass"); if pp and NFTPassCfg.Season then pp.Value = NFTPassCfg.Season end
+    elseif entry.type == "nftpass_reroll" then
+        label = "Pass Reroll"; addBal("_PassRerolls", 1)
+    elseif entry.type == "passskip" then
+        label = "Skip T"..entry.tier
+        local nft = LP:FindFirstChild("_NFTPass")
+        if nft and NFTPassCfg.LvlXP and NFTPassCfg.Rewards then
+            local maxLv = math.min(#NFTPassCfg.Rewards.Free, entry.tier * 10)
+            local XP = nft:FindFirstChild("XP")
+            if XP and maxLv > 0 then XP.Value = math.max(XP.Value, NFTPassCfg.LvlXP(maxLv)) end
+        end
+    elseif entry.type == "vouchers" then
+        label = "Vouchers x"..entry.amount; addBal("_Vouchers", entry.amount)
+    elseif entry.type == "custom_case" then
+        label = "Custom Case x"..entry.amount
+        local cc = LP:FindFirstChild("_CustomCredits")
+        if not cc then cc = Instance.new("IntValue"); cc.Name = "_CustomCredits"; cc.Value = 0; cc.Parent = LP end
+        cc.Value = cc.Value + entry.amount
+    end
+    pushLog("FAKE BUY "..label.." (id "..productId..")")
+    return true
+end
+
+local _hooksList = {}
+local HOOK_NAMES = {"OpenCase","Upgrade","Fuse","NFTPass","Halloween","Rebirth","Quests","Reroll","Craft","DailyRewards","Inventory","Favorite","TON","UpgradeInventory","ShopItems","Code","Settings","CustomCases","Mail"}
+for _, n in ipairs(HOOK_NAMES) do
+    local r = Ev:FindFirstChild(n)
+    if r then _hooksList[n] = r else task.spawn(function() local r2 = Ev:WaitForChild(n, 120); if r2 then _hooksList[n] = r2 end end) end
+end
+local _hookStatus = "not installed"; local _hookInstalled = false
+local remoteToName = {}
+for n, r in pairs(_hooksList) do remoteToName[r] = n end
+task.spawn(function() while true do task.wait(5); for n, r in pairs(_hooksList) do remoteToName[r] = n end end end)
+
+local function installHooks()
+    if _hookInstalled then return end
+    if not (getrawmetatable and getnamecallmethod and setreadonly) then _hookStatus = "FAILED"; return end
+    local ok, mt = pcall(getrawmetatable, game)
+    if not ok or not mt then _hookStatus = "FAILED"; return end
+    local oldNC = rawget(mt, "__namecall"); local oldIdx = rawget(mt, "__index")
+    pcall(setreadonly, mt, false)
+    if oldNC then
+        local ok1 = pcall(function()
+            mt.__namecall = newcclosure(function(self, ...)
+                local m = getnamecallmethod()
+                if m == "PromptProductPurchase" and self == MarketplaceService and _settings.FakeAllPurchases then
+                    local args = {...}; local productId = args[2]
+                    if productId and handleFakeProduct(productId) then return end
+                end
+                if m == "InvokeServer" then
+                    local n = remoteToName[self]
+                    if n and H[n] then
+                        local p = {pcall(H[n], ...)}
+                        if p[1] and p[2] ~= nil then return p[2],p[3],p[4],p[5],p[6],p[7] end
+                    end
+                elseif m == "FireServer" then
+                    local n = remoteToName[self]
+                    if n and H[n] then pcall(H[n], ...); return end
+                end
+                return oldNC(self, ...)
+            end)
+        end)
+        if ok1 then _hookStatus = "installed (namecall)" end
+    end
+    if oldIdx then
+        local ok2 = pcall(function()
+            mt.__index = newcclosure(function(self, key)
+                local r = oldIdx(self, key)
+                if remoteToName[self] and (key == "InvokeServer" or key == "FireServer") and type(r) == "function" then
+                    return newcclosure(function(...)
+                        local first = select(1, ...)
+                        if first == self then
+                            local rest = {}; local n = select("#", ...)
+                            for i = 2, n do rest[i-1] = select(i, ...) end
+                            local name = remoteToName[self]
+                            if key == "InvokeServer" then
+                                if name and H[name] then
+                                    local p = {pcall(H[name], table.unpack(rest))}
+                                    if p[1] and p[2] ~= nil then return p[2],p[3],p[4],p[5],p[6],p[7] end
+                                end
+                            else
+                                if name and H[name] then pcall(H[name], table.unpack(rest)); return end
+                            end
+                            return r(self, table.unpack(rest))
+                        end
+                        return r(self, ...)
+                    end)
+                end
+                return r
+            end)
+        end)
+        if ok2 then if _hookStatus == "installed (namecall)" then _hookStatus = "installed (namecall + index)" else _hookStatus = "installed (index only)" end end
+    end
+    pcall(setreadonly, mt, true)
+    if _hookStatus ~= "not installed" then _hookInstalled = true else _hookStatus = "FAILED" end
+end
+installHooks()
+task.spawn(function() task.wait(3); if not _hookInstalled then installHooks() end end)
+pushLog("Hook: ".._hookStatus)
+
+task.spawn(function()
+    for _, gid in ipairs(GP_IDS) do
+        local v = LP:FindFirstChild("_" .. gid)
+        if not v then v = Instance.new("IntValue"); v.Name = "_" .. gid; v.Value = 0; v.Parent = LP end
+        v.Value = 1
+    end
+    if not LP:FindFirstChild("_HalloweenTimer") then local t = Instance.new("IntValue"); t.Name = "_HalloweenTimer"; t.Value = 0; t.Parent = LP end
+    if not LP:FindFirstChild("_HalloweenSpins") then local s = Instance.new("IntValue"); s.Name = "_HalloweenSpins"; s.Value = 0; s.Parent = LP end
+    if not LP:FindFirstChild("_Cauldron") then local f = Instance.new("Folder"); f.Name = "_Cauldron"; f.Parent = LP end
+    if not LP:FindFirstChild("_CauldronSlots") then local s = Instance.new("IntValue"); s.Name = "_CauldronSlots"; s.Value = 2; s.Parent = LP end
+    if not LP:FindFirstChild("_CandyEarned") then local c = Instance.new("IntValue"); c.Name = "_CandyEarned"; c.Value = 0; c.Parent = LP end
+    if not LP:FindFirstChild("_HalloweenX4Candy") then local v = Instance.new("IntValue"); v.Name = "_HalloweenX4Candy"; v.Value = 1; v.Parent = LP end
+    local cauldron = LP:FindFirstChild("_Cauldron")
+    if cauldron then for _, slot in ipairs(cauldron:GetChildren()) do pcall(function() slot:Destroy() end) end end
+    local nft = LP:WaitForChild("_NFTPass", 90)
+    if nft then
+        local claimed = nft:FindFirstChild("Claimed")
+        if not claimed then claimed = Instance.new("Folder"); claimed.Name = "Claimed"; claimed.Parent = nft end
+        for k, _ in pairs(claimed:GetAttributes()) do if tonumber(k) ~= nil then claimed:SetAttribute(k, nil) end end
+        local xp = nft:FindFirstChild("XP")
+        if xp and NFTPassCfg.LvlXP and NFTPassCfg.Rewards and NFTPassCfg.Rewards.Free then
+            local maxLv = #NFTPassCfg.Rewards.Free
+            if maxLv > 0 then xp.Value = NFTPassCfg.LvlXP(maxLv) end
+        end
+    end
+    task.wait(2)
+    activateAll(3600)
+end)
+
+-- ═══════════ SOFT THEME ═══════════
+local C = {
+    bg = Color3.fromRGB(14, 10, 20),
+    bgAlt = Color3.fromRGB(22, 15, 30),
+    panel = Color3.fromRGB(26, 18, 36),
+    card = Color3.fromRGB(32, 22, 44),
+    cardHover = Color3.fromRGB(44, 30, 60),
+    input = Color3.fromRGB(18, 12, 26),
+    border = Color3.fromHex("8a4fc7"),
+    borderSoft = Color3.fromRGB(50, 34, 66),
+    text = Color3.fromRGB(238, 232, 230),
+    sub = Color3.fromRGB(180, 165, 195),
+    muted = Color3.fromRGB(110, 92, 130),
+    accent = Color3.fromHex("d97842"),
+    accentDark = Color3.fromHex("9b5cd9"),
+    accentRose = Color3.fromHex("cc5477"),
+    green = Color3.fromRGB(105, 185, 125),
+    red = Color3.fromRGB(200, 90, 100),
+    gold = Color3.fromHex("d4a54b"),
+    purple = Color3.fromHex("9b5cd9"),
+    yellow = Color3.fromHex("d4b45c"),
+}
+local S = {winW=540,winH=660,headerH=52,pad=10,sidebarW=58,tabPad=5,contentPad=10,sectionH=22,gap=7,r=7,rSm=4,rLg=9}
+
+local oldG = RS:FindFirstChild("OldSounds") or RS:FindFirstChild("Sounds")
+local function pickSnd(n) return oldG and oldG:FindFirstChild(n) or nil end
+local SND = {Error=pickSnd("UI_Error"), Cancel=pickSnd("UI_Error2"), Success=pickSnd("UI_Cash") or pickSnd("UI_Success"), Click=pickSnd("UI_Click"), Coins=pickSnd("UI_Coins")}
+local function playSnd(s) if not s then return end pcall(function() local c = s:Clone(); c.Parent = PG; c:Play(); Debris:AddItem(c, (c.TimeLength or 5) + 0.3) end) end
+local function notify(t, x) pcall(function() if Handler and Handler.Notify then Handler.Notify(t, x, nil) else SG:SetCore("SendNotification", {Title=t, Text=x}) end end) end
+
+local MainGui
+local function New(cls, props) local ok, o = pcall(Instance.new, cls); if not ok or not o then return nil end; if props then for k, v in pairs(props) do pcall(function() o[k] = v end) end end; return o end
+local function corner(p, r) if p then local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or S.r); c.Parent = p; return c end end
+local function stroke(p, col, th, tr) if not p then return end local s = Instance.new("UIStroke"); s.Color = col or C.borderSoft; s.Thickness = th or 1; s.Transparency = tr or 0.3; s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = p; return s end
+local function gradStroke(p, c1, c2, rot, thickness, tr)
+    if not p then return end
+    local s = Instance.new("UIStroke"); s.Thickness = thickness or 1; s.Transparency = tr or 0.15; s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(c1 or C.accent, c2 or C.purple); g.Rotation = rot or 45; g.Parent = s
+    s.Parent = p; return s, g
+end
+local function gradient2(p, c1, c2, rot)
+    if not p then return end
+    local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(c1, c2); g.Rotation = rot or 0
+    g.Parent = p; return g
+end
+
+local function makeBtn(parent, props, radius, variant)
+    props = props or {}
+    variant = variant or "default"
+    if props.BackgroundTransparency == nil then props.BackgroundTransparency = 0 end
+    props.BorderSizePixel = 0; props.AutoButtonColor = false; props.Parent = parent
+    if not props.TextColor3 then props.TextColor3 = C.text end
+    if not props.Font then props.Font = Enum.Font.GothamBold end
+    
+    local colors = {
+        primary = {C.accent, C.accentRose},
+        success = {C.green, Color3.fromRGB(80, 160, 105)},
+        danger = {C.red, Color3.fromRGB(170, 75, 85)},
+        purple = {C.purple, C.accentRose},
+        ghost = {C.card, C.cardHover},
+        default = {C.card, C.cardHover},
+    }
+    local colPair = colors[variant] or colors.default
+    
+    if not props.BackgroundColor3 then
+        props.BackgroundColor3 = colPair[1]
+    end
+    
+    local b = New("TextButton", props); if not b then return nil end
+    corner(b, radius or S.r)
+    
+    if variant == "primary" or variant == "success" or variant == "danger" or variant == "purple" then
+        gradient2(b, colPair[1], colPair[2], 90)
+    end
+    
+    local st = stroke(b, variant == "default" or variant == "ghost" and C.borderSoft or colPair[1], 1, 0.4)
+    
+    local sc = Instance.new("UIScale", b); sc.Scale = 1
+    
+    b.MouseButton1Down:Connect(function() TweenS:Create(sc, TweenInfo.new(0.08), {Scale=0.94}):Play() end)
+    b.MouseButton1Up:Connect(function() TweenS:Create(sc, TweenInfo.new(0.18, Enum.EasingStyle.Back), {Scale=1}):Play() end)
+    b.MouseLeave:Connect(function()
+        TweenS:Create(sc, TweenInfo.new(0.18, Enum.EasingStyle.Back), {Scale=1}):Play()
+        if variant == "default" or variant == "ghost" then
+            TweenS:Create(b, TweenInfo.new(0.15), {BackgroundColor3=colPair[1]}):Play()
+        end
+        if st then TweenS:Create(st, TweenInfo.new(0.15), {Transparency=0.4}):Play() end
+    end)
+    b.MouseEnter:Connect(function()
+        if variant == "default" or variant == "ghost" then
+            TweenS:Create(b, TweenInfo.new(0.15), {BackgroundColor3=colPair[2]}):Play()
+        end
+        if st then TweenS:Create(st, TweenInfo.new(0.15), {Transparency=0.15}):Play() end
+    end)
+    return b
+end
+
+local function makeField(parent, props, radius)
+    props = props or {}
+    if not props.BackgroundColor3 then props.BackgroundColor3 = C.input end
+    if props.BackgroundTransparency == nil then props.BackgroundTransparency = 0 end
+    props.BorderSizePixel = 0
+    if not props.TextColor3 then props.TextColor3 = C.text end
+    if not props.PlaceholderColor3 then props.PlaceholderColor3 = C.muted end
+    props.ClearTextOnFocus = false; props.Text = props.Text or ""
+    props.MultiLine = false; props.TextWrapped = false
+    if props.PlaceholderText == nil then props.PlaceholderText = "" end
+    if not props.Font then props.Font = Enum.Font.Gotham end
+    props.Parent = parent
+    local f = New("TextBox", props); if not f then return nil end
+    if f.Text == "TextBox" then f.Text = "" end
+    if f.PlaceholderText == "TextBox" then f.PlaceholderText = "" end
+    corner(f, radius or S.rSm)
+    local st = stroke(f, C.borderSoft, 1, 0.35)
+    f.Focused:Connect(function() TweenS:Create(st, TweenInfo.new(0.15), {Color=C.accent, Transparency=0.3}):Play() end)
+    f.FocusLost:Connect(function() TweenS:Create(st, TweenInfo.new(0.15), {Color=C.borderSoft, Transparency=0.35}):Play() end)
+    return f
+end
+
+local function makeTog(parent, init, cb)
+    local t = New("TextButton", {Size=UDim2.new(0,38,0,20), BackgroundColor3=init and C.green or C.input, BackgroundTransparency=0, BorderSizePixel=0, AutoButtonColor=false, Text="", Parent=parent})
+    if not t then return function() return init end end
+    corner(t, 10); stroke(t, C.borderSoft, 1, 0.3)
+    local k = New("Frame", {Size=UDim2.new(0,12,0,12), Position=init and UDim2.new(1,-16,0.5,-6) or UDim2.new(0,4,0.5,-6), BackgroundColor3=C.text, BorderSizePixel=0, Parent=t})
+    corner(k, 6)
+    local state = init
+    t.Activated:Connect(function()
+        state = not state
+        local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad)
+        TweenS:Create(t, info, {BackgroundColor3 = state and C.green or C.input}):Play()
+        TweenS:Create(k, info, {Position = state and UDim2.new(1,-16,0.5,-6) or UDim2.new(0,4,0.5,-6)}):Play()
+        if cb then pcall(cb, state) end
+        playSnd(SND.Click)
+    end)
+    return function() return state end
+end
+
+local function sectionT(parent, text, order)
+    local row = New("Frame", {Size=UDim2.new(1,0,0,S.sectionH), BackgroundTransparency=1, LayoutOrder=order, Parent=parent})
+    local bar = New("Frame", {Size=UDim2.new(0,3,0,13), Position=UDim2.new(0,0,0.5,-6.5), BackgroundColor3=C.accent, BorderSizePixel=0, Parent=row})
+    corner(bar, 2)
+    gradient2(bar, C.accent, C.purple, 90)
+    New("TextLabel", {Size=UDim2.new(1,-12,1,0), Position=UDim2.new(0,12,0,0), BackgroundTransparency=1, Text=string.upper(text), TextColor3=C.sub, Font=Enum.Font.GothamBlack, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+end
+
+local modalLayer, modalStack, openModal, closeModal
+local function buildGui()
+    if MainGui and MainGui.Parent then return MainGui end
+    pcall(function() for _, g in ipairs(PG:GetChildren()) do if g.Name=="SunsetSisiTop" and g:IsA("ScreenGui") then g:Destroy() end end end)
+    local sg = New("ScreenGui", {Name="SunsetSisiTop", ResetOnSpawn=false, IgnoreGuiInset=true, ZIndexBehavior=Enum.ZIndexBehavior.Sibling, DisplayOrder=950, Parent=PG})
+    if not sg then return nil end
+    MainGui = sg
+
+    local scale = Instance.new("UIScale", sg)
+    local function refreshScale()
+        local cam = workspace.CurrentCamera; if not cam then return end
+        local vp = cam.ViewportSize; if vp.X<=0 or vp.Y<=0 then return end
+        scale.Scale = math.clamp(math.min(vp.X/1920, vp.Y/1080)*0.9, 0.55, 1.05)
+    end
+    refreshScale()
+    task.spawn(function() while sg.Parent do task.wait(0.5); refreshScale() end end)
+    local vpY = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y or 1080
+    local winW, winH = S.winW, math.min(math.floor(vpY - 12), S.winH)
+
+    local win = New("Frame", {Name="Window", Size=UDim2.new(0,winW,0,winH), Position=UDim2.new(0,24,0,10), BackgroundColor3=C.bg, BorderSizePixel=0, Active=true, Draggable=true, Parent=sg, ClipsDescendants=true, ZIndex=2})
+    corner(win, S.rLg)
+    stroke(win, C.borderSoft, 1, 0.3)
+
+    local particles = New("Frame", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ClipsDescendants=true, ZIndex=2, Parent=win})
+
+    -- header (SLIM 52px)
+    local header = New("Frame", {Size=UDim2.new(1,0,0,S.headerH), BackgroundColor3=C.bgAlt, BorderSizePixel=0, Parent=win, ZIndex=3})
+    corner(header, S.rLg)
+    local headerSep = New("Frame", {Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1), BackgroundColor3=C.borderSoft, BorderSizePixel=0, Parent=header})
+
+    local logoFrame = New("Frame", {Size=UDim2.new(0,38,0,38), Position=UDim2.new(0,12,0.5,-19), BackgroundColor3=C.card, BorderSizePixel=0, ZIndex=3, Parent=header})
+    corner(logoFrame, 9)
+    gradStroke(logoFrame, C.accent, C.accentRose, 45, 1, 0.2)
+    New("ImageLabel", {Size=UDim2.new(1,-6,1,-6), Position=UDim2.new(0,3,0,3), BackgroundTransparency=1, Image="rbxassetid://122387777939578", ScaleType=Enum.ScaleType.Fit, ZIndex=4, Parent=logoFrame})
+
+    New("TextLabel", {Size=UDim2.new(1,-180,0,18), Position=UDim2.new(0,58,0,8), BackgroundTransparency=1, Text="SUNSET SISI TOP", TextColor3=C.text, Font=Enum.Font.GothamBlack, TextSize=14, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=3, Parent=header})
+    New("TextLabel", {Size=UDim2.new(1,-180,0,12), Position=UDim2.new(0,58,0,27), BackgroundTransparency=1, Text="v"..VERSION_TAG.."  •  🎃  •  ".._hookStatus, TextColor3=C.sub, Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=3, Parent=header})
+
+    local hb = makeBtn(header, {Size=UDim2.new(0,50,0,24), Position=UDim2.new(1,-60,0.5,-12), Text="HIDE", Font=Enum.Font.GothamBlack, TextSize=9, ZIndex=3}, 5, "danger")
+    hb.Activated:Connect(function()
+        playSnd(SND.Click)
+        for k in pairs(SAVE) do pcall(SAVE[k]) end
+        sg.Enabled = false; notify("Sunset Sisi Top","RShift = toggle")
+    end)
+
+    -- body
+    local bodyTop = S.headerH + S.pad; local bodyH = winH - bodyTop - S.pad
+    local sidebar = New("Frame", {Size=UDim2.new(0,S.sidebarW,0,bodyH), Position=UDim2.new(0,S.pad,0,bodyTop), BackgroundColor3=C.bgAlt, BorderSizePixel=0, Parent=win, ZIndex=3})
+    corner(sidebar, S.r); stroke(sidebar, C.borderSoft, 1, 0.35)
+
+    local cX = S.pad + S.sidebarW + S.pad; local cW = winW - cX - S.pad
+    local cHolder = New("Frame", {Size=UDim2.new(0,cW,0,bodyH), Position=UDim2.new(0,cX,0,bodyTop), BackgroundColor3=C.bgAlt, BorderSizePixel=0, Parent=win, ZIndex=3})
+    corner(cHolder, S.r); stroke(cHolder, C.borderSoft, 1, 0.35)
+    local content = New("ScrollingFrame", {
+        Size=UDim2.new(1,-S.contentPad*2,1,-S.contentPad*2), Position=UDim2.new(0,S.contentPad,0,S.contentPad),
+        BackgroundTransparency=1, BorderSizePixel=0, Parent=cHolder, CanvasSize=UDim2.new(0,0,0,0),
+        AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollingDirection=Enum.ScrollingDirection.Y,
+        ScrollBarThickness=5, ScrollBarImageColor3=C.accent, ScrollBarImageTransparency=0.3,
+        ElasticBehavior=Enum.ElasticBehavior.WhenScrollable, ZIndex=4,
+    })
+    local ul = Instance.new("UIListLayout", content); ul.Padding=UDim.new(0,S.gap); ul.SortOrder=Enum.SortOrder.LayoutOrder
+    local up = Instance.new("UIPadding", content); up.PaddingLeft=UDim.new(0,4); up.PaddingRight=UDim.new(0,4); up.PaddingTop=UDim.new(0,3); up.PaddingBottom=UDim.new(0,50)
+
+    -- tabs (CENTERED manually)
+    local tabs, pages = {}, {}
+    local TAB_ORDER = {"NFT","CURR","BUFF","MAIL","SETTINGS","INFO"}
+    local TAB_ICONS = {NFT="rbxassetid://92835421199871", CURR="rbxassetid://106906356643360", BUFF="rbxassetid://73298142408981", MAIL="rbxassetid://116909575223311", SETTINGS="rbxassetid://73975269431953", INFO="rbxassetid://121033438450739"}
+    local n = #TAB_ORDER
+    local padTopS, padBotS = 6, 6
+    local avail = bodyH - padTopS - padBotS - (S.tabPad * (n - 1))
+    local tabH = math.clamp(math.floor(avail / n), 38, 52)
+    local totalTabsH = tabH * n + S.tabPad * (n - 1)
+    local startY = math.max(padTopS, math.floor((bodyH - totalTabsH) / 2))
+    local innerPadX = 4
+
+    for i, key in ipairs(TAB_ORDER) do
+        local y = startY + (i - 1) * (tabH + S.tabPad)
+        local wrap = New("Frame", {Size=UDim2.new(1, -innerPadX*2, 0, tabH), Position=UDim2.new(0, innerPadX, 0, y), BackgroundTransparency=1, Parent=sidebar})
+        local b = New("TextButton", {Size=UDim2.new(1,0,1,0), BackgroundColor3=C.card, BorderSizePixel=0, Text="", AutoButtonColor=false, Parent=wrap, ZIndex=4})
+        corner(b, S.r); stroke(b, C.borderSoft, 1, 0.35)
+        local ic = New("ImageLabel", {Size=UDim2.new(1,-12,1,-12), Position=UDim2.new(0,6,0,6), BackgroundTransparency=1, Image=TAB_ICONS[key] or "", ScaleType=Enum.ScaleType.Fit, Parent=b})
+
+        local badge, badgeLbl
+        if key == "MAIL" then
+            badge = New("Frame", {Size=UDim2.new(0,18,0,18), Position=UDim2.new(1,-6,0,-6), BackgroundColor3=C.red, BorderSizePixel=0, Visible=false, ZIndex=6, Parent=wrap})
+            corner(badge, 9); stroke(badge, C.bgAlt, 2, 0)
+            badgeLbl = New("TextLabel", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="0", TextColor3=C.text, Font=Enum.Font.GothamBlack, TextSize=9, Parent=badge, ZIndex=7})
+        end
+
+        tabs[key] = {wrap=wrap, btn=b, icon=ic, badge=badge, badgeLbl=badgeLbl}
+        local p = New("Frame", {Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, BorderSizePixel=0, LayoutOrder=i, Visible=false, Parent=content})
+        local l = Instance.new("UIListLayout", p); l.FillDirection=Enum.FillDirection.Vertical; l.SortOrder=Enum.SortOrder.LayoutOrder; l.Padding=UDim.new(0,S.gap)
+        pages[key] = p
+    end
+
+    local function setTab(key)
+        for k, p in pairs(pages) do p.Visible = (k==key) end
+        for k, t in pairs(tabs) do
+            local a = (k==key)
+            TweenS:Create(t.btn, TweenInfo.new(0.15), {BackgroundColor3 = a and C.cardHover or C.card}):Play()
+            TweenS:Create(t.icon, TweenInfo.new(0.15), {ImageTransparency = a and 0 or 0.3}):Play()
+        end
+        content.CanvasPosition = Vector2.new(0,0)
+    end
+    setTab("NFT")
+    for k, t in pairs(tabs) do t.btn.Activated:Connect(function() setTab(k); playSnd(SND.Click) end) end
+
+    local function updateMailBadge()
+        local tab = tabs["MAIL"]; if not tab or not tab.badge then return end
+        local pn = LP:GetAttribute("MailPending") or 0
+        tab.badge.Visible = pn > 0
+        tab.badgeLbl.Text = pn > 99 and "99+" or tostring(pn)
+    end
+    updateMailBadge()
+    LP:GetAttributeChangedSignal("MailPending"):Connect(updateMailBadge)
+
+    -- particles
+    local PALETTE = {C.accent, C.purple, C.gold}
+    local LEAF_IMGS = {74573765558950, 102296906709217}
+    task.spawn(function()
+        while sg.Parent do
+            task.wait(math.random(50, 120) / 100)
+            if not win.Visible then continue end
+            local img = New("ImageLabel", {Size=UDim2.fromScale(math.random(6,14)/1000, math.random(6,14)/1000), Position=UDim2.fromScale(math.random(5,95)/100, 1.02), BackgroundTransparency=1, Image="rbxassetid://"..LEAF_IMGS[math.random(1,#LEAF_IMGS)], ImageColor3=PALETTE[math.random(1,#PALETTE)], ImageTransparency=0.55, Parent=particles, ZIndex=2})
+            local dur = math.random(70,120)/10
+            TweenS:Create(img, TweenInfo.new(dur, Enum.EasingStyle.Sine), {Position=UDim2.fromScale(img.Position.X.Scale+(math.random()-0.5)*0.2, math.random()*0.35), ImageTransparency=1}):Play()
+            Debris:AddItem(img, dur+0.2)
+        end
+    end)
+
+    TweenS:Create(logoFrame, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Rotation=5}):Play()
+
+    -- MODAL
+    modalLayer = New("TextButton", {Name="ModalLayer", Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.new(0,0,0), BackgroundTransparency=0.7, BorderSizePixel=0, Text="", AutoButtonColor=false, Visible=false, ZIndex=1000, Parent=sg})
+    modalStack = {}
+    closeModal = function() local t = table.remove(modalStack); if t and t.destroy then pcall(t.destroy) end; modalLayer.Visible = #modalStack > 0 end
+    modalLayer.MouseButton1Click:Connect(function() if #modalStack > 0 then closeModal() end end)
+
+    openModal = function(cfg)
+        while #modalStack > 0 do closeModal() end
+        local cam = workspace.CurrentCamera; local vp = cam and cam.ViewportSize or Vector2.new(1280,720); local sc = scale.Scale or 1
+        local cw, ch = math.min(460, vp.X/sc-24), math.min(720, vp.Y/sc-24)
+        local card = New("Frame", {Size=UDim2.new(0,cw,0,ch), Position=UDim2.new(0.5,0,0.05,0), AnchorPoint=Vector2.new(0.5,0), BackgroundColor3=C.bg, BorderSizePixel=0, ZIndex=1001, Parent=modalLayer})
+        corner(card, 10)
+        stroke(card, C.borderSoft, 1, 0.25)
+
+        local mScale = Instance.new("UIScale", card); mScale.Scale = 0.9
+        TweenS:Create(mScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+
+        local headH = 60
+        local mHead = New("Frame", {Size=UDim2.new(1,0,0,headH), BackgroundColor3=C.bgAlt, BorderSizePixel=0, ZIndex=1002, Parent=card})
+        corner(mHead, 10)
+        local hSep = New("Frame", {Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1), BackgroundColor3=C.borderSoft, BorderSizePixel=0, Parent=mHead})
+        local hSepGrad = Instance.new("UIGradient"); hSepGrad.Color = ColorSequence.new(C.accent, C.purple); hSepGrad.Rotation=0
+        hSepGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.3), NumberSequenceKeypoint.new(1, 1)})
+        hSepGrad.Parent=hSep
+
+        New("TextLabel", {Size=UDim2.new(1,-70,0,20), Position=UDim2.new(0,18,0,12), BackgroundTransparency=1, Text=cfg.title or "Select", TextColor3=C.text, Font=Enum.Font.GothamBlack, TextSize=14, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1003, Parent=card})
+        local countLbl = New("TextLabel", {Size=UDim2.new(1,-70,0,14), Position=UDim2.new(0,18,0,32), BackgroundTransparency=1, Text="", TextColor3=C.sub, Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1003, Parent=card})
+
+        local cb = makeBtn(card, {Size=UDim2.new(0,30,0,30), Position=UDim2.new(1,-42,0,15), Text="✕", Font=Enum.Font.GothamBlack, TextSize=13, ZIndex=1003}, 7, "danger")
+        cb.Activated:Connect(closeModal)
+
+        local searchFrame = New("Frame", {Size=UDim2.new(1,-32,0,34), Position=UDim2.new(0,16,0,headH+8), BackgroundColor3=C.input, BorderSizePixel=0, ZIndex=1003, Parent=card})
+        corner(searchFrame, S.r); stroke(searchFrame, C.borderSoft, 1, 0.35)
+        New("ImageLabel", {Size=UDim2.new(0,16,0,16), Position=UDim2.new(0,10,0.5,-8), BackgroundTransparency=1, Image="rbxassetid://108589940012755", ImageColor3=C.sub, ScaleType=Enum.ScaleType.Fit, ZIndex=1004, Parent=searchFrame})
+        local sr = New("TextBox", {Size=UDim2.new(1,-38,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text="", TextColor3=C.text, PlaceholderColor3=C.muted, Font=Enum.Font.Gotham, TextSize=11, ClearTextOnFocus=false, PlaceholderText="Search NFT...", TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1004, Parent=searchFrame})
+        local searchStroke = searchFrame:FindFirstChildOfClass("UIStroke")
+        sr.Focused:Connect(function() if searchStroke then TweenS:Create(searchStroke, TweenInfo.new(0.15), {Color=C.accent, Transparency=0.3}):Play() end end)
+        sr.FocusLost:Connect(function() if searchStroke then TweenS:Create(searchStroke, TweenInfo.new(0.15), {Color=C.borderSoft, Transparency=0.35}):Play() end end)
+
+        local listH = cfg.multi and (ch - headH - 34 - 14 - 52) or (ch - headH - 34 - 14)
+        local scroll = New("ScrollingFrame", {
+            Size=UDim2.new(1,-24,0,listH), Position=UDim2.new(0,12,0,headH+50),
+            BackgroundTransparency=1, BorderSizePixel=0,
+            ScrollBarThickness=6, ScrollBarImageColor3=C.accent, ScrollBarImageTransparency=0.2,
+            CanvasSize=UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize=Enum.AutomaticSize.Y,
+            ZIndex=1002, Parent=card,
+        })
+        local sl2 = Instance.new("UIListLayout", scroll); sl2.Padding = UDim.new(0,6)
+        sl2.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local multiSelected = {}
+        if cfg.multi and cfg.initialSelected then for _, n in ipairs(cfg.initialSelected) do multiSelected[n] = true end end
+        local isSelected = cfg.isSelected or function() return false end
+
+        local CHUNK = 30
+        local filtered = {}
+        local renderedCount = 0
+        local rendering = false
+        local rows = {}
+        local destroyed = false
+
+        local function countSelected()
+            local n = 0; for _ in pairs(multiSelected) do n = n + 1 end
+            return n
+        end
+
+        local updateBtnCountRef = nil
+
+        local function updateCounter()
+            if cfg.multi then
+                countLbl.Text = ("%d selected • %d available • %d shown"):format(countSelected(), #filtered, renderedCount)
+            else
+                countLbl.Text = ("%d items • %d shown"):format(#filtered, renderedCount)
+            end
+        end
+
+        if cfg.multi then
+            local confirmBar = New("Frame", {Size=UDim2.new(1,-24,0,46), Position=UDim2.new(0,12,1,-56), BackgroundColor3=C.bgAlt, BorderSizePixel=0, ZIndex=1003, Parent=card})
+            corner(confirmBar, S.r); stroke(confirmBar, C.borderSoft, 1, 0.35)
+            local cntLbl = New("TextLabel", {Size=UDim2.new(0.5,-16,1,0), Position=UDim2.new(0,14,0,0), BackgroundTransparency=1, Text="", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1004, Parent=confirmBar})
+            local confirmBtn = makeBtn(confirmBar, {Size=UDim2.new(0,130,0,32), Position=UDim2.new(1,-136,0.5,-16), Text="✓ APPLY", Font=Enum.Font.GothamBlack, TextSize=10, ZIndex=1004}, 5, "success")
+            local function updateBtnCount() cntLbl.Text = "Selected: " .. countSelected() end
+            updateBtnCountRef = updateBtnCount
+            confirmBtn.Activated:Connect(function()
+                local picked = {}
+                for _, it in ipairs(cfg.items or {}) do if multiSelected[it.name] then table.insert(picked, it) end end
+                closeModal(); if cfg.onPickMulti then pcall(cfg.onPickMulti, picked) end
+            end)
+            updateBtnCount()
+        end
+
+        local function buildRow(item, order)
+            local sel = cfg.multi and multiSelected[item.name] or isSelected(item)
+            local b = New("TextButton", {
+                Size=UDim2.new(1,0,0,54),
+                BackgroundColor3 = sel and C.cardHover or C.card,
+                BorderSizePixel=0, AutoButtonColor=false, Text="",
+                LayoutOrder = order, Parent=scroll, ZIndex=1003,
+            })
+            corner(b, S.r)
+            local st = stroke(b, sel and C.accent or C.borderSoft, sel and 1.5 or 1, sel and 0.2 or 0.4)
+
+            local pw = New("Frame", {Size=UDim2.new(0,42,0,42), Position=UDim2.new(0,6,0.5,-21), BackgroundColor3=C.bg, BorderSizePixel=0, Parent=b, ZIndex=1004})
+            corner(pw, S.rSm)
+            if item.image then
+                New("ImageLabel", {Size=UDim2.new(1,-4,1,-4), Position=UDim2.new(0,2,0,2), BackgroundTransparency=1, Image=item.image, ScaleType=Enum.ScaleType.Fit, Parent=pw, ZIndex=1004})
+            elseif item.bgColor then
+                New("Frame", {Size=UDim2.new(1,-4,1,-4), Position=UDim2.new(0,2,0,2), BackgroundColor3=item.bgColor, BorderSizePixel=0, Parent=pw, ZIndex=1004})
+            end
+
+            New("TextLabel", {Size=UDim2.new(1,-90,0,18), Position=UDim2.new(0,54,0,9), BackgroundTransparency=1, Text=item.display or item.name, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=11, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, Parent=b, ZIndex=1004})
+
+            if item.price then
+                New("TextLabel", {Size=UDim2.new(1,-90,0,14), Position=UDim2.new(0,54,0,27), BackgroundTransparency=1, Text="⭐ "..item.price, TextColor3=C.gold, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=b, ZIndex=1004})
+            end
+
+            local checkRef, checkFrameRef
+            if cfg.multi then
+                local chk = New("Frame", {Size=UDim2.new(0,22,0,22), Position=UDim2.new(1,-30,0.5,-11), BackgroundColor3 = sel and C.green or C.input, BackgroundTransparency = sel and 0 or 0.5, BorderSizePixel=0, Parent=b, ZIndex=1004})
+                corner(chk, 5); stroke(chk, sel and C.green or C.borderSoft, 1, 0.4)
+                local check = New("TextLabel", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text=sel and "✓" or "", TextColor3=C.bg, Font=Enum.Font.GothamBlack, TextSize=14, Parent=chk, ZIndex=1005})
+                checkRef = check
+                checkFrameRef = chk
+            end
+
+            b.MouseEnter:Connect(function()
+                if not (cfg.multi and multiSelected[item.name]) and not (not cfg.multi and isSelected(item)) then
+                    TweenS:Create(b, TweenInfo.new(0.12), {BackgroundColor3=C.cardHover}):Play()
+                end
+            end)
+            b.MouseLeave:Connect(function()
+                if not (cfg.multi and multiSelected[item.name]) and not (not cfg.multi and isSelected(item)) then
+                    TweenS:Create(b, TweenInfo.new(0.12), {BackgroundColor3=C.card}):Play()
+                end
+            end)
+
+            b.MouseButton1Click:Connect(function()
+                if not cfg.multi then
+                    closeModal(); if cfg.onPick then pcall(cfg.onPick, item) end
+                    return
+                end
+                multiSelected[item.name] = not multiSelected[item.name] or nil
+                local nowSel = multiSelected[item.name]
+                TweenS:Create(b, TweenInfo.new(0.15), {BackgroundColor3=nowSel and C.cardHover or C.card}):Play()
+                TweenS:Create(st, TweenInfo.new(0.15), {Color=nowSel and C.accent or C.borderSoft, Transparency=nowSel and 0.2 or 0.4, Thickness=nowSel and 1.5 or 1}):Play()
+                if checkFrameRef then
+                    TweenS:Create(checkFrameRef, TweenInfo.new(0.15), {BackgroundColor3=nowSel and C.green or C.input, BackgroundTransparency=nowSel and 0 or 0.5}):Play()
+                    checkRef.Text = nowSel and "✓" or ""
+                end
+                if updateBtnCountRef then updateBtnCountRef() end
+                updateCounter()
+                playSnd(SND.Click)
+            end)
+
+            table.insert(rows, b)
+            return b
+        end
+
+        local function renderNextChunk()
+            if destroyed or rendering then return end
+            if renderedCount >= #filtered then return end
+            rendering = true
+            local target = math.min(renderedCount + CHUNK, #filtered)
+            for i = renderedCount + 1, target do
+                buildRow(filtered[i], i)
+            end
+            renderedCount = target
+            rendering = false
+            updateCounter()
+        end
+
+        local function checkLoadMore()
+            if destroyed or rendering then return end
+            if renderedCount >= #filtered then return end
+            local viewY = scroll.AbsoluteSize.Y
+            if viewY <= 0 then return end
+            local scrollY = scroll.CanvasPosition.Y
+            local contentY = scroll.AbsoluteCanvasSize.Y
+            if contentY <= 0 then return end
+            if scrollY + viewY >= contentY - 300 then
+                local prev = renderedCount
+                renderNextChunk()
+                if renderedCount > prev then task.defer(checkLoadMore) end
+            end
+        end
+
+        local function clearAll()
+            for _, r in ipairs(rows) do pcall(function() r:Destroy() end) end
+            rows = {}
+            renderedCount = 0
+        end
+
+        local function applyFilter(text)
+            text = (text or ""):lower()
+            filtered = {}
+            for _, item in ipairs(cfg.items or {}) do
+                if text == "" then
+                    table.insert(filtered, item)
+                else
+                    local name = item.name or ""
+                    local disp = item.display or name
+                    if name:lower():find(text, 1, true) or disp:lower():find(text, 1, true) then
+                        table.insert(filtered, item)
+                    end
+                end
+            end
+            clearAll()
+            updateCounter()
+            renderNextChunk()
+            task.defer(checkLoadMore)
+        end
+
+        scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(checkLoadMore)
+        scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(checkLoadMore)
+        scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(checkLoadMore)
+
+        sr:GetPropertyChangedSignal("Text"):Connect(function() applyFilter(sr.Text) end)
+
+        applyFilter("")
+        modalLayer.Visible = true
+        table.insert(modalStack, { destroy = function()
+            destroyed = true
+            pcall(function() card:Destroy() end)
+        end })
+    end
+
+    -- items
+    local giftItems = {}
+    for name, data in pairs(Info.Gifts) do
+        if type(data) == "table" and not data.Hidden and tonumber(data.Image) then
+            table.insert(giftItems, {name=name, display=data.DisplayName or name, image="rbxassetid://"..tostring(data.Image), price=num(data.Price or 0)})
+        end
+    end
+    table.sort(giftItems, function(a,b) return (Info.Gifts[a.name].Price or 0) > (Info.Gifts[b.name].Price or 0) end)
+
+    local patItems = {}
+    for n, id in pairs(Info.Patterns or {}) do table.insert(patItems, {name=n, display=n, image="rbxassetid://"..tostring(id)}) end
+    table.sort(patItems, function(a,b) return a.name < b.name end)
+
+    local bdItems = {}
+    for n, col in pairs(Info.Backdrops or {}) do table.insert(bdItems, {name=n, display=n, bgColor=col}) end
+    table.sort(bdItems, function(a,b) return a.name < b.name end)
+
+    local function makePickerRow(parent, order, config)
+        local row = New("Frame", {Size=UDim2.new(1,0,0,44), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=order, Parent=parent})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+        local preview = New("ImageLabel", {Size=UDim2.new(0,32,0,32), Position=UDim2.new(0,6,0.5,-16), BackgroundColor3=C.input, BorderSizePixel=0, Image="rbxasset://textures/ui/GuiImagePlaceholder.png", ScaleType=Enum.ScaleType.Fit, Parent=row})
+        corner(preview, S.rSm)
+        local lbl = New("TextLabel", {Size=UDim2.new(1,-(6+32+6+66+8),1,0), Position=UDim2.new(0,44,0,0), BackgroundTransparency=1, Text=config.emptyText or "— Select —", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, Parent=row})
+        local btn = makeBtn(row, {Size=UDim2.new(0,60,0,26), Position=UDim2.new(1,-66,0.5,-13), Text="SELECT", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "primary")
+        local function setSelection(giftName)
+            local gi = giftName and Info.Gifts[giftName] or nil
+            if not gi then
+                preview.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+                lbl.Text = config.emptyText or "— Select —"; row.BackgroundColor3 = C.card
+            else
+                preview.Image = "rbxassetid://"..tostring(gi.Image or 0)
+                lbl.Text = (gi.DisplayName or giftName).."   ⭐ "..num(gi.Price or 0); row.BackgroundColor3 = C.cardHover
+            end
+        end
+        btn.Activated:Connect(function()
+            openModal({title=config.title or "Select", items=config.items or giftItems, isSelected=function(it) return config.getSelected and config.getSelected() == it.name end, onPick=function(it) setSelection(it.name); if config.onPick then pcall(config.onPick, it) end end})
+        end)
+        return {row=row, preview=preview, label=lbl, btn=btn, setSelection=setSelection}
+    end
+
+    local function makeChipDisplay(parent, order, getList, removeFn, height)
+        local frame = New("Frame", {Size=UDim2.new(1,0,0,height or 42), BackgroundColor3=C.input, BorderSizePixel=0, LayoutOrder=order, Parent=parent})
+        corner(frame, S.r); stroke(frame, C.borderSoft, 1, 0.4)
+        local scroll = New("ScrollingFrame", {Size=UDim2.new(1,-8,1,-8), Position=UDim2.new(0,4,0,4), BackgroundTransparency=1, BorderSizePixel=0, ScrollBarThickness=3, ScrollBarImageColor3=C.accent, CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.X, ScrollingDirection=Enum.ScrollingDirection.X, Parent=frame})
+        local lay = Instance.new("UIListLayout", scroll); lay.FillDirection=Enum.FillDirection.Horizontal; lay.Padding=UDim.new(0,5); lay.VerticalAlignment=Enum.VerticalAlignment.Center
+        local function refresh()
+            for _, c in ipairs(scroll:GetChildren()) do if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end end
+            local list = getList()
+            if #list == 0 then
+                New("TextLabel", {Size=UDim2.new(0,220,1,0), BackgroundTransparency=1, Text="— Ничего не выбрано —", TextColor3=C.muted, Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=scroll})
+                return
+            end
+            for i, name in ipairs(list) do
+                local g = Info.Gifts[name]
+                local chip = New("TextButton", {Size=UDim2.new(0,36,0,36), BackgroundColor3=C.card, BorderSizePixel=0, AutoButtonColor=false, Text="", LayoutOrder=i, Parent=scroll})
+                corner(chip, S.rSm); stroke(chip, C.borderSoft, 1, 0.4)
+                if g then
+                    New("ImageLabel", {Size=UDim2.new(1,-6,1,-6), Position=UDim2.new(0,3,0,3), BackgroundTransparency=1, Image="rbxassetid://"..tostring(g.Image or 0), ScaleType=Enum.ScaleType.Fit, Parent=chip})
+                end
+                chip.MouseEnter:Connect(function() TweenS:Create(chip, TweenInfo.new(0.12), {BackgroundColor3=C.red}):Play() end)
+                chip.MouseLeave:Connect(function() TweenS:Create(chip, TweenInfo.new(0.12), {BackgroundColor3=C.card}):Play() end)
+                chip.Activated:Connect(function() removeFn(i); refresh(); playSnd(SND.Click) end)
+            end
+        end
+        refresh()
+        return refresh
+    end
+
+    -- NFT PAGE
+    local nftPage = pages["NFT"]
+    local selectedGift, uniqueOn, selPattern, selBackdrop, customNum = nil, false, nil, nil, ""
+    sectionT(nftPage, "SELECT NFT", 1)
+    makePickerRow(nftPage, 2, {emptyText="— Select NFT —", title="Select NFT", getSelected=function() return selectedGift end, onPick=function(it) selectedGift = it.name end})
+    sectionT(nftPage, "ATTRS", 10)
+    local uRow = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=11, Parent=nftPage})
+    corner(uRow, S.r); stroke(uRow, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Unique NFT", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=uRow})
+    local uW = New("Frame", {Size=UDim2.new(0,38,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundTransparency=1, Parent=uRow})
+    makeTog(uW, false, function(s) uniqueOn = s end)
+    local pbR = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundTransparency=1, LayoutOrder=12, Parent=nftPage})
+    local pbL = Instance.new("UIListLayout", pbR); pbL.FillDirection=Enum.FillDirection.Horizontal; pbL.Padding=UDim.new(0,S.gap)
+    local patBtn = makeBtn(pbR, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Pattern", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=1}, 4, "purple")
+    local bdBtn = makeBtn(pbR, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Backdrop", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=2}, 4, "purple")
+    patBtn.Activated:Connect(function() openModal({title="Pattern", items=patItems, isSelected=function(it) return selPattern==it.name end, onPick=function(it) selPattern=it.name; patBtn.Text=it.name:sub(1,12) end}) end)
+    bdBtn.Activated:Connect(function() openModal({title="Backdrop", items=bdItems, isSelected=function(it) return selBackdrop==it.name end, onPick=function(it) selBackdrop=it.name; bdBtn.Text=it.name:sub(1,12) end}) end)
+    local numR = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=13, Parent=nftPage})
+    corner(numR, S.r); stroke(numR, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(0.5,-10,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Custom #", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=numR})
+    local numBox = makeField(numR, {Size=UDim2.new(0,120,0,22), Position=UDim2.new(1,-130,0.5,-11), PlaceholderText="auto", TextSize=10}, 4)
+    numBox.FocusLost:Connect(function() local raw = (numBox.Text or ""):gsub("^%s+",""):gsub("%s+$","") if raw ~= "" then customNum = normNum(raw); numBox.Text = customNum else customNum = "" end end)
+    local addR = New("Frame", {Size=UDim2.new(1,0,0,30), BackgroundTransparency=1, LayoutOrder=14, Parent=nftPage})
+    local aL = Instance.new("UIListLayout", addR); aL.FillDirection=Enum.FillDirection.Horizontal; aL.Padding=UDim.new(0,S.gap)
+    local function buildOpts() local o = {isUnique=uniqueOn, pattern=selPattern, backdrop=selBackdrop} if customNum ~= "" then o.number = customNum end return o end
+    local add1 = makeBtn(addR, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="+ 1", Font=Enum.Font.GothamBlack, TextSize=11, LayoutOrder=1}, 4, "success")
+    local add5 = makeBtn(addR, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="+ 5", Font=Enum.Font.GothamBlack, TextSize=11, LayoutOrder=2}, 4, "primary")
+    add1.Activated:Connect(function() if not selectedGift then playSnd(SND.Error); return end; if spawnNFT(selectedGift, buildOpts()) then playSnd(SND.Coins) end end)
+    add5.Activated:Connect(function() if not selectedGift then playSnd(SND.Error); return end; for _=1,5 do spawnNFT(selectedGift, buildOpts()) end; playSnd(SND.Coins) end)
+
+    sectionT(nftPage, "INVENTORY", 20)
+    local invScroll = New("ScrollingFrame", {Size=UDim2.new(1,0,0,240), BackgroundColor3=C.input, BorderSizePixel=0, CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=5, ScrollBarImageColor3=C.accent, LayoutOrder=21, Parent=nftPage})
+    corner(invScroll, S.r); stroke(invScroll, C.borderSoft, 1, 0.4)
+    local il = Instance.new("UIListLayout", invScroll); il.Padding=UDim.new(0,3)
+    local ip = Instance.new("UIPadding", invScroll); ip.PaddingLeft=UDim.new(0,5); ip.PaddingRight=UDim.new(0,5); ip.PaddingTop=UDim.new(0,5); ip.PaddingBottom=UDim.new(0,5)
+
+    local invRows = {}
+    local INV_LIMIT = 100
+    local function refreshInv()
+        for _, c in ipairs(invRows) do pcall(function() c:Destroy() end) end
+        invRows = {}
+        local items = {}
+        for _, it in ipairs(_Inv:GetChildren()) do
+            local g = Info.Gifts[it.Name]
+            if g then table.insert(items, {inst=it, price=g.Price or 0, disp=g.DisplayName or it.Name, uq=it:GetAttribute("Unique"), fav=it:GetAttribute("Favorite")}) end
+        end
+        table.sort(items, function(a,b) return a.price>b.price end)
+        for i = 1, math.min(INV_LIMIT, #items) do
+            local item = items[i]
+            local row = New("Frame", {Size=UDim2.new(1,0,0,30), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=i, Parent=invScroll})
+            corner(row, S.rSm)
+            local g = Info.Gifts[item.inst.Name]
+            New("ImageLabel", {Size=UDim2.new(0,24,0,24), Position=UDim2.new(0,3,0.5,-12), BackgroundTransparency=1, Image="rbxassetid://"..tostring(g.Image or 0), ScaleType=Enum.ScaleType.Fit, Parent=row})
+            New("TextLabel", {Size=UDim2.new(1,-160,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text=(item.fav and "★ " or "")..item.disp..(item.uq and " [U]" or ""), TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, Parent=row})
+            New("TextLabel", {Size=UDim2.new(0,80,1,0), Position=UDim2.new(1,-124,0,0), BackgroundTransparency=1, Text="⭐"..num(item.price), TextColor3=C.gold, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Right, Parent=row})
+            local del = makeBtn(row, {Size=UDim2.new(0,24,0,20), Position=UDim2.new(1,-28,0.5,-10), Text="✕", Font=Enum.Font.GothamBlack, TextSize=10}, 3, "danger")
+            del.Activated:Connect(function() destroyNFT(item.inst); refreshInv() end)
+            table.insert(invRows, row)
+        end
+        if #items > INV_LIMIT then
+            local more = New("Frame", {Size=UDim2.new(1,0,0,20), BackgroundTransparency=1, LayoutOrder=INV_LIMIT+1, Parent=invScroll})
+            New("TextLabel", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="+"..(#items-INV_LIMIT).." more...", TextColor3=C.muted, Font=Enum.Font.GothamBold, TextSize=9, Parent=more})
+            table.insert(invRows, more)
+        end
+    end
+    refreshInv()
+    task.spawn(function() while MainGui and MainGui.Parent do task.wait(2); if nftPage.Visible then refreshInv() end end end)
+
+    -- CURR PAGE
+    local cp = pages["CURR"]
+    sectionT(cp, "ВАЛЮТЫ (все)", 1)
+    local balLbls = {}
+    for i, c in ipairs(CUR_LIST) do
+        local row = New("Frame", {Size=UDim2.new(1,0,0,34), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=i+1, Parent=cp})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+        New("ImageLabel", {Size=UDim2.new(0,22,0,22), Position=UDim2.new(0,6,0.5,-11), BackgroundTransparency=1, Image=c.icon, ScaleType=Enum.ScaleType.Fit, Parent=row})
+        New("TextLabel", {Size=UDim2.new(0.22,-6,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text=c.label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        local v = New("TextLabel", {Size=UDim2.new(0.22,-6,1,0), Position=UDim2.new(0.24,0,0,0), BackgroundTransparency=1, Text=fullNum(getBal(c.key)), TextColor3=C.gold, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        balLbls[c.key] = v
+        local bx = makeField(row, {Size=UDim2.new(0,100,0,22), Position=UDim2.new(1,-190,0.5,-11), PlaceholderText="amount", TextSize=9}, 4)
+        local addBtn = makeBtn(row, {Size=UDim2.new(0,80,0,22), Position=UDim2.new(1,-84,0.5,-11), Text="ДОБАВИТЬ", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "success")
+        addBtn.Activated:Connect(function() local v2 = parseNum(bx.Text); if v2 then addBal(c.key, v2); bx.Text = ""; playSnd(SND.Coins) end end)
+    end
+    task.spawn(function() while MainGui and MainGui.Parent do task.wait(0.5); for k, l in pairs(balLbls) do if l.Parent then l.Text = fullNum(getBal(k)) end end end end)
+
+    sectionT(cp, "КАСТОМ ПРОМО", 20)
+    local promoDraft = {stars = 0, ton = 0, gems = 0, luck2 = 0, luck4 = 0, luck6 = 0, blessing = 0}
+    local promoUnique = false
+    local promoPattern, promoBackdrop = nil, nil
+    local promoCodeBox = makeField(cp, {Size=UDim2.new(1,0,0,28), PlaceholderText="Promo Code Name", TextSize=10, LayoutOrder=21})
+
+    local promoNftBtn = makeBtn(cp, {Size=UDim2.new(1,0,0,32), Text="+ ВЫБРАТЬ NFT (можно несколько)", Font=Enum.Font.GothamBlack, TextSize=10, LayoutOrder=22}, 4, "primary")
+    local promoNftList = {}
+    local promoRefresh = makeChipDisplay(cp, 23, function() return promoNftList end, function(i) table.remove(promoNftList, i) end, 42)
+    promoNftBtn.Activated:Connect(function()
+        openModal({title="Выбрать NFT для промо", items=giftItems, multi=true, initialSelected=promoNftList, onPickMulti=function(picked)
+            promoNftList = {}
+            for _, it in ipairs(picked) do table.insert(promoNftList, it.name) end
+            promoRefresh(); playSnd(SND.Coins)
+        end})
+    end)
+
+    local promoURow = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=24, Parent=cp})
+    corner(promoURow, S.r); stroke(promoURow, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Уникальные NFT", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=promoURow})
+    local promoUW = New("Frame", {Size=UDim2.new(0,38,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundTransparency=1, Parent=promoURow})
+    makeTog(promoUW, false, function(s) promoUnique = s end)
+
+    local promoAttrRow = New("Frame", {Size=UDim2.new(1,0,0,26), BackgroundTransparency=1, LayoutOrder=25, Parent=cp})
+    local paLay = Instance.new("UIListLayout", promoAttrRow); paLay.FillDirection=Enum.FillDirection.Horizontal; paLay.Padding=UDim.new(0,S.gap)
+    local promoPatBtn = makeBtn(promoAttrRow, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Узор", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=1}, 4, "purple")
+    local promoBdBtn = makeBtn(promoAttrRow, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Фон", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=2}, 4, "purple")
+    promoPatBtn.Activated:Connect(function() openModal({title="Узор", items=patItems, isSelected=function(it) return promoPattern==it.name end, onPick=function(it) promoPattern=it.name; promoPatBtn.Text="Узор: "..it.name:sub(1,8) end}) end)
+    promoBdBtn.Activated:Connect(function() openModal({title="Фон", items=bdItems, isSelected=function(it) return promoBackdrop==it.name end, onPick=function(it) promoBackdrop=it.name; promoBdBtn.Text="Фон: "..it.name:sub(1,8) end}) end)
+
+    sectionT(cp, "ВАЛЮТЫ В ПРОМО", 26)
+    local promoCurDefs = {{key="stars", label="Звёзды", icon="rbxassetid://123580826852107"},{key="ton", label="Тоны", icon="rbxassetid://83906505399852"},{key="gems", label="Алмазы", icon="rbxassetid://110345687858105"}}
+    for i, def in ipairs(promoCurDefs) do
+        local row = New("Frame", {Size=UDim2.new(1,0,0,34), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=26+i, Parent=cp})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+        New("ImageLabel", {Size=UDim2.new(0,22,0,22), Position=UDim2.new(0,6,0.5,-11), BackgroundTransparency=1, Image=def.icon, ScaleType=Enum.ScaleType.Fit, Parent=row})
+        New("TextLabel", {Size=UDim2.new(0.3,-6,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text=def.label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        local bx = makeField(row, {Size=UDim2.new(0,110,0,22), Position=UDim2.new(1,-180,0.5,-11), PlaceholderText="0", TextSize=9}, 4)
+        local setBtn = makeBtn(row, {Size=UDim2.new(0,70,0,22), Position=UDim2.new(1,-74,0.5,-11), Text="SET", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "success")
+        setBtn.Activated:Connect(function() local v = parseNum(bx.Text); if v and v > 0 then promoDraft[def.key] = v; bx.Text = num(v); playSnd(SND.Coins) else promoDraft[def.key] = 0; bx.Text = "" end end)
+    end
+
+    sectionT(cp, "УДАЧА И БЛЕССИНГ (сек)", 30)
+    local promoLuckDefs = {{key="luck2", label="Удача x2", icon="rbxassetid://73298142408981"},{key="luck4", label="Удача x4", icon="rbxassetid://123239672888015"},{key="luck6", label="Удача x6", icon="rbxassetid://140207230584185"},{key="blessing", label="Блессинг", icon="rbxassetid://102560611108829"}}
+    for i, def in ipairs(promoLuckDefs) do
+        local row = New("Frame", {Size=UDim2.new(1,0,0,34), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=30+i, Parent=cp})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+        New("ImageLabel", {Size=UDim2.new(0,22,0,22), Position=UDim2.new(0,6,0.5,-11), BackgroundTransparency=1, Image=def.icon, ScaleType=Enum.ScaleType.Fit, Parent=row})
+        New("TextLabel", {Size=UDim2.new(0.3,-6,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text=def.label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        local bx = makeField(row, {Size=UDim2.new(0,110,0,22), Position=UDim2.new(1,-180,0.5,-11), PlaceholderText="сек", TextSize=9}, 4)
+        local setBtn = makeBtn(row, {Size=UDim2.new(0,70,0,22), Position=UDim2.new(1,-74,0.5,-11), Text="SET", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "success")
+        setBtn.Activated:Connect(function() local v = tonumber(bx.Text); if v and v > 0 then promoDraft[def.key] = math.floor(v); bx.Text = num(v); playSnd(SND.Coins) else promoDraft[def.key] = 0; bx.Text = "" end end)
+    end
+
+    local createPromoBtn = makeBtn(cp, {Size=UDim2.new(1,0,0,36), Text="СОЗДАТЬ ПРОМОКОД", Font=Enum.Font.GothamBlack, TextSize=11, LayoutOrder=40}, 5, "success")
+    createPromoBtn.Activated:Connect(function()
+        local code = (promoCodeBox.Text or ""):gsub("^%s+",""):gsub("%s+$",""):upper()
+        if code == "" then playSnd(SND.Error); notify("PROMO","Введи название"); return end
+        local entry, hasAny = {}, false
+        for k, v in pairs(promoDraft) do if type(v) == "number" and v > 0 then entry[k] = v; hasAny = true end end
+        if #promoNftList > 0 then
+            entry.nft_list = {}
+            for _, n in ipairs(promoNftList) do table.insert(entry.nft_list, n) end
+            hasAny = true
+            if promoUnique then
+                entry.nft_list_unique = true
+                entry.nft_list_pattern = promoPattern
+                entry.nft_list_backdrop = promoBackdrop
+            end
+        end
+        if not hasAny then playSnd(SND.Error); notify("PROMO","Хотя бы одно значение"); return end
+        _promo[code] = entry; SAVE.promo()
+        playSnd(SND.Success); notify("PROMO","Код "..code.." создан!")
+        promoCodeBox.Text = ""
+        promoDraft = {stars = 0, ton = 0, gems = 0, luck2 = 0, luck4 = 0, luck6 = 0, blessing = 0}
+        promoNftList = {}; promoRefresh()
+    end)
+
+    -- BUFF PAGE (REDESIGNED)
+    local bp = pages["BUFF"]
+    sectionT(bp, "ACTIVE BUFFS", 1)
+    local BROWS = {{key="_LuckyPotion", label="x2 Luck"}, {key="_LuckyPotion2", label="x4 Luck"}, {key="_LuckyPotion3", label="x6 Luck"}, {key="_Blessing", label="Blessing"}}
+    for i, cfg in ipairs(BROWS) do
+        -- main row: 66px height
+        local row = New("Frame", {Size=UDim2.new(1,0,0,66), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=i+1, Parent=bp})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+
+        -- top part: label + status (full width)
+        local labelLbl = New("TextLabel", {
+            Size=UDim2.new(1,-20,0,16), Position=UDim2.new(0,10,0,8),
+            BackgroundTransparency=1, Text=cfg.label, TextColor3=C.text,
+            Font=Enum.Font.GothamBold, TextSize=11,
+            TextXAlignment=Enum.TextXAlignment.Left, Parent=row,
+        })
+        local statusLbl = New("TextLabel", {
+            Size=UDim2.new(1,-20,0,12), Position=UDim2.new(0,10,0,24),
+            BackgroundTransparency=1, Text="OFF", TextColor3=C.muted,
+            Font=Enum.Font.Gotham, TextSize=9,
+            TextXAlignment=Enum.TextXAlignment.Left, Parent=row,
+        })
+
+        -- buttons row (bottom, full width)
+        local br = New("Frame", {Size=UDim2.new(1,-20,0,22), Position=UDim2.new(0,10,0,40), BackgroundTransparency=1, Parent=row})
+        local bl = Instance.new("UIListLayout", br); bl.FillDirection=Enum.FillDirection.Horizontal; bl.Padding=UDim.new(0,4)
+        local defs = {{label="5m", secs=300, v="success"}, {label="1h", secs=3600, v="primary"}, {label="24h", secs=86400, v="purple"}, {label="OFF", secs=0, v="danger"}}
+        for bi, bc in ipairs(defs) do
+            local btn = makeBtn(br, {Size=UDim2.new(0.25,-3,1,0), Text=bc.label, Font=Enum.Font.GothamBlack, TextSize=10, LayoutOrder=bi}, 4, bc.v)
+            btn.Activated:Connect(function()
+                if bc.secs == 0 then removeBuff(cfg.key) else forceAddBuff(cfg.key, bc.secs) end
+                playSnd(SND.Coins)
+            end)
+        end
+
+        task.spawn(function()
+            while MainGui and MainGui.Parent do
+                task.wait(0.5)
+                if not row.Parent then break end
+                local v = LP:FindFirstChild(cfg.key)
+                local s = v and v.Value or 0
+                if s > 0 then
+                    statusLbl.Text = "● ON  "..fmtTime(s)
+                    statusLbl.TextColor3 = C.green
+                else
+                    statusLbl.Text = "○ OFF"
+                    statusLbl.TextColor3 = C.muted
+                end
+            end
+        end)
+    end
+    sectionT(bp, "QUICK", 10)
+    local qr = New("Frame", {Size=UDim2.new(1,0,0,30), BackgroundTransparency=1, LayoutOrder=11, Parent=bp})
+    local ql = Instance.new("UIListLayout", qr); ql.FillDirection=Enum.FillDirection.Horizontal; ql.Padding=UDim.new(0,S.gap)
+    local aon = makeBtn(qr, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="ALL ON 1h", Font=Enum.Font.GothamBlack, TextSize=10, LayoutOrder=1}, 4, "success")
+    aon.Activated:Connect(function() activateAll(3600); playSnd(SND.Success) end)
+    local aof = makeBtn(qr, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="ALL OFF", Font=Enum.Font.GothamBlack, TextSize=10, LayoutOrder=2}, 4, "danger")
+    aof.Activated:Connect(function() removeAll(); playSnd(SND.Click) end)
+
+    -- MAIL PAGE
+    local mailPage = pages["MAIL"]
+    local mailNftList = {}
+    local mailCur = {StarsValue=0, GemsValue=0, TONValue=0}
+    local mailUnique = false
+    local mailPat, mailBd, mailNum = nil, nil, ""
+    local mailCurInputs = {}
+
+    sectionT(mailPage, "FAKE SENDER", 1)
+    local senderBox = makeField(mailPage, {Size=UDim2.new(1,0,0,28), PlaceholderText="Ник отправителя (Admin, Support...)", TextSize=10, Text=mailSender, LayoutOrder=2})
+    senderBox:GetPropertyChangedSignal("Text"):Connect(function()
+        mailSender = (senderBox.Text or ""):gsub("^@",""):gsub("%s+$","")
+        _settings.mailSender = mailSender; SAVE.settings()
+    end)
+
+    sectionT(mailPage, "NFT В ПОСЫЛКЕ", 10)
+    local mailNftBtn = makeBtn(mailPage, {Size=UDim2.new(1,0,0,32), Text="+ ВЫБРАТЬ NFT (можно несколько)", Font=Enum.Font.GothamBlack, TextSize=10, LayoutOrder=11}, 4, "primary")
+    local mailRefresh = makeChipDisplay(mailPage, 12, function() return mailNftList end, function(i) table.remove(mailNftList, i) end, 42)
+    mailNftBtn.Activated:Connect(function()
+        openModal({title="Выбрать NFT", items=giftItems, multi=true, initialSelected=mailNftList, onPickMulti=function(picked)
+            mailNftList = {}
+            for _, it in ipairs(picked) do table.insert(mailNftList, it.name) end
+            mailRefresh(); playSnd(SND.Coins)
+        end})
+    end)
+
+    local muRow = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=13, Parent=mailPage})
+    corner(muRow, S.r); stroke(muRow, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Уникальные", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=muRow})
+    local muW = New("Frame", {Size=UDim2.new(0,38,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundTransparency=1, Parent=muRow})
+    makeTog(muW, false, function(s) mailUnique = s end)
+
+    local mAttrRow = New("Frame", {Size=UDim2.new(1,0,0,26), BackgroundTransparency=1, LayoutOrder=14, Parent=mailPage})
+    local maLay = Instance.new("UIListLayout", mAttrRow); maLay.FillDirection=Enum.FillDirection.Horizontal; maLay.Padding=UDim.new(0,S.gap)
+    local mPatBtn = makeBtn(mAttrRow, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Узор", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=1}, 4, "purple")
+    local mBdBtn = makeBtn(mAttrRow, {Size=UDim2.new(0.5,-S.gap/2,1,0), Text="Фон", Font=Enum.Font.GothamBold, TextSize=10, LayoutOrder=2}, 4, "purple")
+    mPatBtn.Activated:Connect(function() openModal({title="Узор", items=patItems, isSelected=function(it) return mailPat==it.name end, onPick=function(it) mailPat=it.name; mPatBtn.Text="Узор: "..it.name:sub(1,8) end}) end)
+    mBdBtn.Activated:Connect(function() openModal({title="Фон", items=bdItems, isSelected=function(it) return mailBd==it.name end, onPick=function(it) mailBd=it.name; mBdBtn.Text="Фон: "..it.name:sub(1,8) end}) end)
+
+    local mNumRow = New("Frame", {Size=UDim2.new(1,0,0,28), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=15, Parent=mailPage})
+    corner(mNumRow, S.r); stroke(mNumRow, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(0.5,-10,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Номер", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=mNumRow})
+    local mNumBox = makeField(mNumRow, {Size=UDim2.new(0,140,0,22), Position=UDim2.new(1,-150,0.5,-11), PlaceholderText="auto", TextSize=10}, 4)
+    mNumBox.FocusLost:Connect(function() local raw = (mNumBox.Text or ""):gsub("^%s+",""):gsub("%s+$","") if raw ~= "" then mailNum = normNum(raw); mNumBox.Text = mailNum else mailNum = "" end end)
+
+    sectionT(mailPage, "ВАЛЮТЫ", 20)
+    local mailCurDefs = {{key="StarsValue", label="Звёзды", icon="rbxassetid://123580826852107"},{key="TONValue", label="Тоны", icon="rbxassetid://83906505399852"},{key="GemsValue", label="Алмазы", icon="rbxassetid://110345687858105"}}
+    for i, def in ipairs(mailCurDefs) do
+        local row = New("Frame", {Size=UDim2.new(1,0,0,34), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=20+i, Parent=mailPage})
+        corner(row, S.r); stroke(row, C.borderSoft, 1, 0.4)
+        New("ImageLabel", {Size=UDim2.new(0,22,0,22), Position=UDim2.new(0,6,0.5,-11), BackgroundTransparency=1, Image=def.icon, ScaleType=Enum.ScaleType.Fit, Parent=row})
+        New("TextLabel", {Size=UDim2.new(0.35,-6,1,0), Position=UDim2.new(0,32,0,0), BackgroundTransparency=1, Text=def.label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        local bx = makeField(row, {Size=UDim2.new(0,110,0,22), Position=UDim2.new(1,-180,0.5,-11), PlaceholderText="0", TextSize=9}, 4)
+        local setBtn = makeBtn(row, {Size=UDim2.new(0,70,0,22), Position=UDim2.new(1,-74,0.5,-11), Text="SET", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "success")
+        mailCurInputs[def.key] = bx
+        setBtn.Activated:Connect(function() local v = parseNum(bx.Text); if v and v > 0 then mailCur[def.key] = v; bx.Text = num(v); playSnd(SND.Coins) else mailCur[def.key] = 0; bx.Text = "" end end)
+    end
+
+    sectionT(mailPage, "ВХОДЯЩИЕ", 30)
+    local pendingCountLbl = New("TextLabel", {Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text="", TextColor3=C.accent, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, LayoutOrder=31, Parent=mailPage})
+    local pendingList = New("ScrollingFrame", {Size=UDim2.new(1,0,0,120), BackgroundColor3=C.input, BorderSizePixel=0, CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=4, ScrollBarImageColor3=C.accent, LayoutOrder=32, Parent=mailPage})
+    corner(pendingList, S.r); stroke(pendingList, C.borderSoft, 1, 0.4)
+    local pendingL = Instance.new("UIListLayout", pendingList); pendingL.Padding=UDim.new(0,3)
+    local pendingP = Instance.new("UIPadding", pendingList); pendingP.PaddingLeft=UDim.new(0,5); pendingP.PaddingRight=UDim.new(0,5); pendingP.PaddingTop=UDim.new(0,5); pendingP.PaddingBottom=UDim.new(0,5)
+
+    local function refreshPendingIncoming()
+        for _, c in ipairs(pendingList:GetChildren()) do if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end end
+        local incoming = {}
+        for code, m in pairs(_mail) do
+            if (m.to == LP.UserId or m.toName == LP.Name) and not m.claimed and not m.declined then
+                table.insert(incoming, {code=code, m=m})
+            end
+        end
+        table.sort(incoming, function(a,b) return (a.m.time or 0) > (b.m.time or 0) end)
+        pendingCountLbl.Text = "Pending: " .. #incoming
+        if #incoming == 0 then
+            New("TextLabel", {Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, Text="Нет входящих", TextColor3=C.muted, Font=Enum.Font.GothamBold, TextSize=9, Parent=pendingList})
+            return
+        end
+        for i, item in ipairs(incoming) do
+            local m = item.m
+            local row = New("Frame", {Size=UDim2.new(1,0,0,36), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=i, Parent=pendingList})
+            corner(row, S.rSm); stroke(row, C.borderSoft, 1, 0.4)
+            local nftCnt, curCnt = 0, 0
+            for _, entry in ipairs(m.items or {}) do nftCnt = nftCnt + (entry.C or (entry.A and 1) or 0) end
+            for _, v in pairs(m.currency or {}) do curCnt = curCnt + (tonumber(v) or 0) end
+            New("TextLabel", {Size=UDim2.new(1,-110,0,14), Position=UDim2.new(0,8,0,4), BackgroundTransparency=1, Text="От "..(m.fromName or "?"), TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+            New("TextLabel", {Size=UDim2.new(1,-110,0,12), Position=UDim2.new(0,8,0,20), BackgroundTransparency=1, Text=nftCnt.." NFT • "..num(curCnt).." cur", TextColor3=C.sub, Font=Enum.Font.Code, TextSize=8, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+            local claimBtn = makeBtn(row, {Size=UDim2.new(0,68,0,24), Position=UDim2.new(1,-74,0.5,-12), Text="CLAIM", Font=Enum.Font.GothamBlack, TextSize=9}, 4, "success")
+            claimBtn.Activated:Connect(function()
+                pcall(H.Mail, "Claim", {item.code})
+                refreshPendingIncoming()
+                playSnd(SND.Coins); notify("MAIL","Забрано от "..(m.fromName or "?"))
+            end)
+        end
+    end
+    refreshPendingIncoming()
+
+    sectionT(mailPage, "СОЗДАТЬ ПОСЫЛКУ", 35)
+    local createParcelBtn = makeBtn(mailPage, {Size=UDim2.new(1,0,0,36), Text="СОЗДАТЬ ВХОДЯЩУЮ ПОСЫЛКУ", Font=Enum.Font.GothamBlack, TextSize=11, LayoutOrder=36}, 5, "success")
+    createParcelBtn.Activated:Connect(function()
+        if mailSender == "" then playSnd(SND.Error); notify("MAIL","Введи имя отправителя"); return end
+        local hasAny = #mailNftList > 0
+        if not hasAny then for _, v in pairs(mailCur) do if v > 0 then hasAny = true; break end end end
+        if not hasAny then playSnd(SND.Error); notify("MAIL","Добавь NFT или валюту"); return end
+        local items = {}
+        if #mailNftList > 0 then
+            for _, nftName in ipairs(mailNftList) do
+                if mailUnique then
+                    table.insert(items, {N=nftName, A={Number=(mailNum ~= "" and mailNum or nil), Pattern=mailPat, Backdrop=mailBd}})
+                else
+                    table.insert(items, {N=nftName, C=1})
+                end
+            end
+        elseif mailUnique then
+            playSnd(SND.Error); notify("MAIL","Выбери NFT"); return
+        end
+        local currency = {}
+        for k, v in pairs(mailCur) do if v > 0 then currency[k] = v end end
+        local code = genUniqueParcel()
+        _mail[code] = {id = code, to = LP.UserId, toName = LP.Name, fromId = 0, fromName = mailSender, time = os.time(), items = items, currency = currency, claimed = nil, declined = nil, fake = true, incoming = true}
+        SAVE.mail(); playSnd(SND.Success)
+        notify("MAIL","Посылка "..code.." от "..mailSender)
+        pushLog("FAKE INCOMING "..code.." from "..mailSender)
+        mailNftList = {}; mailRefresh()
+        for k in pairs(mailCur) do mailCur[k] = 0 end
+        for _, box in pairs(mailCurInputs) do box.Text = "" end
+        refreshPendingIncoming()
+        updateMailPending()
+    end)
+
+    sectionT(mailPage, "ИСТОРИЯ", 40)
+    local historyList = New("ScrollingFrame", {Size=UDim2.new(1,0,0,130), BackgroundColor3=C.input, BorderSizePixel=0, CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=4, ScrollBarImageColor3=C.accent, LayoutOrder=41, Parent=mailPage})
+    corner(historyList, S.r); stroke(historyList, C.borderSoft, 1, 0.4)
+    local histLay = Instance.new("UIListLayout", historyList); histLay.Padding=UDim.new(0,3)
+    local histP = Instance.new("UIPadding", historyList); histP.PaddingLeft=UDim.new(0,5); histP.PaddingRight=UDim.new(0,5); histP.PaddingTop=UDim.new(0,5); histP.PaddingBottom=UDim.new(0,5)
+
+    local function refreshHistory()
+        for _, c in ipairs(historyList:GetChildren()) do if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end end
+        local entries = {}
+        for code, m in pairs(_mail) do
+            local isIncoming = (m.to == LP.UserId) or (m.toName == LP.Name)
+            local isSent = (m.fromId == LP.UserId) and (m.fromId ~= 0)
+            if isIncoming and (m.claimed or m.declined) then
+                table.insert(entries, {code=code, m=m, kind=(m.claimed and "claimed" or "declined")})
+            elseif isSent then
+                table.insert(entries, {code=code, m=m, kind="sent"})
+            end
+        end
+        table.sort(entries, function(a,b) return (a.m.time or 0) > (b.m.time or 0) end)
+        if #entries == 0 then
+            New("TextLabel", {Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, Text="История пуста", TextColor3=C.muted, Font=Enum.Font.GothamBold, TextSize=9, Parent=historyList})
+            return
+        end
+        for i, e in ipairs(entries) do
+            local m = e.m
+            local nftCnt, curCnt = 0, 0
+            for _, item in ipairs(m.items or {}) do nftCnt = nftCnt + (item.C or (item.A and 1) or 0) end
+            for _, v in pairs(m.currency or {}) do curCnt = curCnt + (tonumber(v) or 0) end
+            local row = New("Frame", {Size=UDim2.new(1,0,0,32), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=i, Parent=historyList})
+            corner(row, S.rSm); stroke(row, C.borderSoft, 1, 0.4)
+            local icon, color, label
+            if e.kind == "sent" then icon = "→"; color = C.accent; label = "Sent to "..(m.toName or "?")
+            elseif e.kind == "claimed" then icon = "✓"; color = C.green; label = "From "..(m.fromName or "?")
+            else icon = "✗"; color = C.red; label = "Declined from "..(m.fromName or "?") end
+            New("TextLabel", {Size=UDim2.new(0,20,1,0), Position=UDim2.new(0,6,0,0), BackgroundTransparency=1, Text=icon, TextColor3=color, Font=Enum.Font.GothamBlack, TextSize=12, Parent=row})
+            New("TextLabel", {Size=UDim2.new(1,-110,0,12), Position=UDim2.new(0,28,0,3), BackgroundTransparency=1, Text=label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, Parent=row})
+            New("TextLabel", {Size=UDim2.new(1,-110,0,10), Position=UDim2.new(0,28,0,17), BackgroundTransparency=1, Text=nftCnt.." NFT • "..num(curCnt).." cur", TextColor3=C.sub, Font=Enum.Font.Code, TextSize=8, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+            New("TextLabel", {Size=UDim2.new(0,80,1,0), Position=UDim2.new(1,-84,0,0), BackgroundTransparency=1, Text=os.date("%d/%m %H:%M", m.time or 0), TextColor3=C.muted, Font=Enum.Font.Code, TextSize=8, TextXAlignment=Enum.TextXAlignment.Right, Parent=row})
+        end
+    end
+    refreshHistory()
+
+    local mailDebounce = false
+    local function onMailChange()
+        if mailDebounce then return end
+        mailDebounce = true
+        task.delay(0.3, function() mailDebounce = false; refreshPendingIncoming(); refreshHistory(); updateMailPending() end)
+    end
+    LP:GetAttributeChangedSignal("MailPending"):Connect(onMailChange)
+
+    -- SETTINGS PAGE
+    local hp = pages["SETTINGS"]
+    local totalItems = 0
+    sectionT(hp, "HOOKS", 1)
+    local HL = {
+        {key="OpenCase", label="OpenCase"}, {key="Upgrade", label="Upgrade"}, {key="Fuse", label="Fuse"},
+        {key="NFTPass", label="NFT Pass"}, {key="Halloween", label="Halloween"}, {key="Rebirth", label="Rebirth"},
+        {key="Quests", label="Quests"}, {key="Reroll", label="Reroll"}, {key="Craft", label="Craft"},
+        {key="DailyRewards", label="Daily"}, {key="Inventory", label="Inventory"}, {key="Favorite", label="Favorite"},
+        {key="TON", label="TON"}, {key="UpgradeInventory", label="Upg Inv"}, {key="ShopItems", label="ShopItems"},
+        {key="Code", label="Code"}, {key="Settings", label="Settings"}, {key="Mail", label="Mail"},
+    }
+    for i, h in ipairs(HL) do
+        local row = New("Frame", {Size=UDim2.new(1,0,0,24), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=1+i, Parent=hp})
+        corner(row, S.rSm); stroke(row, C.borderSoft, 1, 0.4)
+        New("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text=h.label, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+        local w = New("Frame", {Size=UDim2.new(0,38,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundTransparency=1, Parent=row})
+        makeTog(w, ON[h.key] ~= false, function(s) ON[h.key]=s end)
+        totalItems = 1 + i
+    end
+
+    sectionT(hp, "OPTIONS", totalItems + 1)
+    local sr = New("Frame", {Size=UDim2.new(1,0,0,24), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=totalItems+2, Parent=hp})
+    corner(sr, S.rSm); stroke(sr, C.borderSoft, 1, 0.4)
+    New("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Fake Robux Purchases", TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=sr})
+    local sw = New("Frame", {Size=UDim2.new(0,38,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundTransparency=1, Parent=sr})
+    makeTog(sw, _settings.FakeAllPurchases ~= false, function(s) _settings.FakeAllPurchases = s; SAVE.settings() end)
+
+    sectionT(hp, "CREATE CUSTOM NFT", totalItems + 5)
+    local cnftName = makeField(hp, {Size=UDim2.new(1,0,0,26), PlaceholderText="Name", TextSize=10, LayoutOrder=totalItems+6})
+    local cnftImg = makeField(hp, {Size=UDim2.new(1,0,0,26), PlaceholderText="Image ID (digits)", TextSize=10, LayoutOrder=totalItems+7})
+    local cnftPrice = makeField(hp, {Size=UDim2.new(1,0,0,26), PlaceholderText="Price (1000000 / 1m)", TextSize=10, LayoutOrder=totalItems+8})
+    local cnftPrv = New("Frame", {Size=UDim2.new(1,0,0,58), BackgroundColor3=C.input, BorderSizePixel=0, LayoutOrder=totalItems+9, Parent=hp})
+    corner(cnftPrv, S.r); stroke(cnftPrv, C.borderSoft, 1, 0.4)
+    local cnftImgPrv = New("ImageLabel", {Size=UDim2.new(0,46,0,46), Position=UDim2.new(0.5,-23,0.5,-23), BackgroundTransparency=1, Image="", ScaleType=Enum.ScaleType.Fit, Parent=cnftPrv})
+    cnftImg:GetPropertyChangedSignal("Text"):Connect(function() local id = (cnftImg.Text or ""):gsub("%D", ""); cnftImgPrv.Image = id ~= "" and "rbxassetid://"..id or "" end)
+    local cnftAddBtn = makeBtn(hp, {Size=UDim2.new(1,0,0,30), Text="ADD TO GAME", Font=Enum.Font.GothamBlack, TextSize=11, LayoutOrder=totalItems+10}, 4, "primary")
+    cnftAddBtn.Activated:Connect(function()
+        local name = (cnftName.Text or ""):gsub("^%s+",""):gsub("%s+$","")
+        local idStr = (cnftImg.Text or ""):gsub("%D", "")
+        local priceStr = (cnftPrice.Text or ""):gsub("^%s+",""):gsub("%s+$","")
+        if name == "" or idStr == "" then playSnd(SND.Error); notify("CUSTOM","Fill name & image"); return end
+        local price = parseNum(priceStr); if not price or price <= 0 then playSnd(SND.Error); notify("CUSTOM","Enter price"); return end
+        if Info.Gifts[name] then playSnd(SND.Error); notify("CUSTOM","Already exists"); return end
+        _customNFTs[name] = {name=name, image=tonumber(idStr), price=price, display=name, created=os.time()}
+        Info.Gifts[name] = {Price=price, Image=tonumber(idStr), DisplayName=name, CustomUser=true, Hidden=false}
+        SAVE.cnft(); playSnd(SND.Success); notify("CUSTOM NFT","Added: "..name)
+        cnftName.Text = ""; cnftImg.Text = ""; cnftPrice.Text = ""; cnftImgPrv.Image = ""
+    end)
+
+    sectionT(hp, "QUICK ACTIONS", totalItems + 15)
+    local function mkA(text, order, cb, variant)
+        local b = makeBtn(hp, {Size=UDim2.new(1,0,0,26), Text=text, Font=Enum.Font.GothamBold, TextSize=9, LayoutOrder=order}, 4, variant or "ghost")
+        b.Activated:Connect(function() pcall(cb); playSnd(SND.Coins) end)
+    end
+    mkA("Max Pass Level", totalItems+16, function() local N = LP:FindFirstChild("_NFTPass"); if N and NFTPassCfg.LvlXP and NFTPassCfg.Rewards then local XP = N:FindFirstChild("XP"); if XP then XP.Value = NFTPassCfg.LvlXP(#NFTPassCfg.Rewards.Free) end end end)
+    mkA("Reset Pass Claims", totalItems+17, function() local c = passClaimedRef(); if c then for k, _ in pairs(c:GetAttributes()) do if tonumber(k) ~= nil then c:SetAttribute(k, nil) end end end end)
+    mkA("Force Plus Pass", totalItems+18, function() local pp = LP:FindFirstChild("_PlusPass"); if pp and NFTPassCfg.Season then pp.Value = NFTPassCfg.Season end end)
+    mkA("Best Drop Info", totalItems+19, function() local r = getBestRef(); if r then notify("BEST", r.Value.." ⭐"..num((Info.Gifts[r.Value] and Info.Gifts[r.Value].Price) or 0)) end end)
+    mkA("Refresh Leaderboard", totalItems+20, function() pcall(injectLB) end, "success")
+    mkA("Clear Log", totalItems+21, function() _logs = {}; SAVE.log() end, "danger")
+
+    -- INFO PAGE
+    local ip2 = pages["INFO"]
+    sectionT(ip2, "STATUS", 1)
+    local function addR(order, k, v)
+        local r = New("Frame", {Size=UDim2.new(1,0,0,22), BackgroundColor3=C.card, BorderSizePixel=0, LayoutOrder=order, Parent=ip2})
+        corner(r, S.rSm); stroke(r, C.borderSoft, 1, 0.4)
+        local pad = Instance.new("UIPadding", r); pad.PaddingLeft = UDim.new(0,10); pad.PaddingRight = UDim.new(0,12)
+        New("TextLabel", {Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1, Text=k, TextColor3=C.sub, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, Parent=r})
+        return New("TextLabel", {Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0.5,0,0,0), BackgroundTransparency=1, Text=v, TextColor3=C.text, Font=Enum.Font.GothamBold, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, Parent=r})
+    end
+    addR(2, "Hook", _hookStatus); addR(3, "Owner", LP.Name)
+    local lN = addR(4, "Normal", "0"); local lU = addR(5, "Uniques", "0")
+    local lI = addR(6, "Inventory", "0"); local lL = addR(7, "Luck", "x1")
+    local lB = addR(8, "Best", "—"); local lC = addR(9, "Custom", "0")
+    local lM = addR(10, "Mail Pending", "0"); local lBan = addR(11, "LB Ban", "pending")
+    task.spawn(function() while MainGui and MainGui.Parent do task.wait(2); if ip2.Visible then
+        local n, u = 0, 0
+        for _ in pairs(_nfts) do n = n + 1 end
+        for _ in pairs(_uniques) do u = u + 1 end
+        local c = 0; for _ in pairs(_customNFTs) do c = c + 1 end
+        lN.Text = tostring(n); lU.Text = tostring(u); lI.Text = tostring(#_Inv:GetChildren()); lL.Text = "x"..getLuck()
+        local br = getBestRef(); lB.Text = br and br.Value or "—"
+        lC.Text = tostring(c)
+        lM.Text = tostring(LP:GetAttribute("MailPending") or 0)
+        local hooked = 0; for _ in pairs(_lbHooked) do hooked = hooked + 1 end
+        lBan.Text = hooked > 0 and ("active x"..hooked) or "waiting"
+    end end end)
+    sectionT(ip2, "LOG", 20)
+    local lb = New("ScrollingFrame", {Size=UDim2.new(1,0,0,240), BackgroundColor3=C.input, BorderSizePixel=0, CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollBarThickness=4, ScrollBarImageColor3=C.accent, LayoutOrder=21, Parent=ip2})
+    corner(lb, S.r); stroke(lb, C.borderSoft, 1, 0.4)
+    local ll = Instance.new("UIListLayout", lb); ll.Padding=UDim.new(0,1)
+    local lpp = Instance.new("UIPadding", lb); lpp.PaddingLeft=UDim.new(0,6); lpp.PaddingRight=UDim.new(0,6); lpp.PaddingTop=UDim.new(0,5); lpp.PaddingBottom=UDim.new(0,5)
+    local function renderLog()
+        for _, c in ipairs(lb:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
+        local s = math.max(1, #_logs - 80)
+        for i = s, #_logs do local e = _logs[i]; New("TextLabel", {Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text="["..os.date("%H:%M:%S", e.t).."] "..e.m, TextColor3=C.sub, Font=Enum.Font.Code, TextSize=8, TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, LayoutOrder=i, Parent=lb}) end
+    end
+    renderLog()
+    task.spawn(function() while MainGui and MainGui.Parent do task.wait(2); if ip2.Visible then renderLog() end end end)
+
+    return sg
+end
+
+pcall(buildGui)
+if MainGui then MainGui.Enabled = true; MainGui.DisplayOrder = 950 end
+
+UIS.InputBegan:Connect(function(input, processed)
+    if processed or UIS:GetFocusedTextBox() or not input.KeyCode then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        if MainGui and MainGui.Parent then MainGui.Enabled = not MainGui.Enabled end
+    elseif input.KeyCode == Enum.KeyCode.V then
+        _logs = {}; SAVE.log()
+    end
+end)
+
+task.spawn(function()
+    while MainGui and MainGui.Parent do
+        task.wait(30)
+        for k in pairs(SAVE) do pcall(SAVE[k]) end
+    end
+end)
+
+pcall(function() game:BindToClose(function() for k in pairs(SAVE) do pcall(SAVE[k]) end end) end)
+
+pcall(function() notify("Sunset Sisi Top", "v" .. VERSION_TAG .. " | " .. _hookStatus) end)
+pushLog("READY v" .. VERSION_TAG .. " | " .. _hookStatus)
+print("[SST36] READY | " .. _hookStatus)
